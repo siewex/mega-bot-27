@@ -78,6 +78,11 @@ class Settings:
     max_tokens: int = field(default_factory=lambda: _int("MAX_TOKENS", 1500))
     request_timeout: int = field(default_factory=lambda: _int("REQUEST_TIMEOUT", 90))
 
+    # Поиск в интернете (Tavily). Пустой ключ = поиск выключен
+    tavily_api_key: str = field(default_factory=lambda: _str("TAVILY_API_KEY"))
+    search_max_results: int = field(default_factory=lambda: _int("SEARCH_MAX_RESULTS", 5))
+    max_tool_rounds: int = field(default_factory=lambda: _int("MAX_SEARCHES_PER_ANSWER", 2))
+
     # Диалог и лимиты
     history_limit: int = field(default_factory=lambda: _int("HISTORY_LIMIT", 14))
     cooldown_seconds: int = field(default_factory=lambda: _int("COOLDOWN_SECONDS", 5))

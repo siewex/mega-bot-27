@@ -22,6 +22,7 @@ from llm import LLMClient, LLMError
 from prompt import build_system_prompt, load_knowledge
 from storage import MessageStore
 from textutils import md_to_tg_html, split_message, strip_markdown
+from tools import ToolRunner
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -32,6 +33,7 @@ log = logging.getLogger("mega-bot")
 router = Router()
 store: MessageStore
 llm: LLMClient
+tools: ToolRunner = ToolRunner("")
 KNOWLEDGE = ""
 BOT_USER: User | None = None
 
@@ -163,7 +165,7 @@ def build_llm_messages(history) -> list[dict]:
             msgs.append({"role": role, "content": content})
     if msgs and msgs[0]["role"] == "assistant":
         msgs.insert(0, {"role": "user", "content": "[контекст]: продолжение разговора в чате лиги"})
-    system = build_system_prompt(settings.bot_name, settings.commissioners, KNOWLEDGE)
+    system = build_system_prompt(settings.bot_name, settings.commissioners, KNOWLEDGE, bool(tools.tools))
     return [{"role": "system", "content": system}] + msgs
 
 
@@ -259,6 +261,7 @@ async def cmd_status(message: Message) -> None:
     await message.reply(
         f"Модель: {settings.model}\nЗапасная: {settings.fallback_model or '—'}\n"
         f"Reasoning: {settings.reasoning_effort or '—'}\nБаза знаний: {len(KNOWLEDGE)} симв.\n"
+        f"Поиск в интернете: {'вкл' if tools.tools else 'выкл'}\n"
         f"Запросов сегодня: {sum(v for (u, d), v in _daily.items() if d == date.today())}"
     )
 
@@ -306,7 +309,7 @@ async def on_message(message: Message) -> None:
     try:
         thread_id = message.message_thread_id if message.is_topic_message else None
         async with ChatActionSender.typing(bot=message.bot, chat_id=chat_id, message_thread_id=thread_id):
-            answer = await llm.complete(build_llm_messages(history))
+            answer = await llm.complete(build_llm_messages(history), tools.tools or None, tools.run)
     except LLMError as e:
         log.error("Ошибка LLM: %s", e)
         await message.reply(f"Что-то я подвис 🥲 Попробуй ещё раз чуть позже. Если срочно — пиши комиссионерам{commissioners_hint()}.")
@@ -339,7 +342,7 @@ async def periodic_cleanup() -> None:
 
 
 async def main() -> None:
-    global store, llm, KNOWLEDGE, BOT_USER
+    global store, llm, tools, KNOWLEDGE, BOT_USER
     settings.validate()
 
     KNOWLEDGE = load_knowledge(settings.knowledge_dir)
@@ -354,11 +357,16 @@ async def main() -> None:
         max_tokens=settings.max_tokens,
         timeout=settings.request_timeout,
         max_concurrent=settings.max_concurrent_requests,
+        max_tool_rounds=settings.max_tool_rounds,
     )
+    tools = ToolRunner(settings.tavily_api_key, settings.search_max_results)
 
     bot = Bot(settings.bot_token, default=DefaultBotProperties(parse_mode=None))
     BOT_USER = await bot.get_me()
-    log.info("Бот @%s запущен. Модель: %s. База знаний: %s символов", BOT_USER.username, settings.model, len(KNOWLEDGE))
+    log.info(
+        "Бот @%s запущен. Модель: %s. База знаний: %s символов. Поиск: %s",
+        BOT_USER.username, settings.model, len(KNOWLEDGE), "вкл" if tools.tools else "выкл",
+    )
 
     await bot.set_my_commands([
         BotCommand(command="help", description="Как пользоваться ботом"),
