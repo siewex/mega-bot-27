@@ -359,7 +359,10 @@ def make_recap_handler(bot: Bot):
 
         if week != "?" and state.is_new(schedule_key(week)):
             schedule_text = format_schedule_message(week, games)
-            await bot.send_message(settings.recap_chat_id, schedule_text, parse_mode="HTML")
+            await bot.send_message(
+                settings.recap_chat_id, schedule_text, parse_mode="HTML",
+                link_preview_options=LinkPreviewOptions(is_disabled=True),
+            )
             state.mark_seen(schedule_key(week))
 
         completed = [g for g in games if g.is_completed]
@@ -371,7 +374,10 @@ def make_recap_handler(bot: Bot):
                 log.error("LLM не сгенерировала recap (%s), отправляю без хайп-текста", e)
                 blurb = ""
             text = format_telegram_message(event, md_to_tg_html(blurb) if blurb else "")
-            await bot.send_message(settings.recap_chat_id, text, parse_mode="HTML")
+            await bot.send_message(
+                settings.recap_chat_id, text, parse_mode="HTML",
+                link_preview_options=LinkPreviewOptions(is_disabled=True),
+            )
             state.mark_seen(game_key(event))
     return handle_recap
 
