@@ -91,9 +91,10 @@ class Settings:
     max_question_chars: int = field(default_factory=lambda: _int("MAX_QUESTION_CHARS", 3000))
     history_ttl_days: int = field(default_factory=lambda: _int("HISTORY_TTL_DAYS", 14))
 
-    # Файлы
+    # Файлы. DATA_DIR — конвенция хостинга (Bothost): папка, которая переживает перезапуск контейнера.
+    data_dir: Path = field(default_factory=lambda: Path(_str("DATA_DIR") or BASE_DIR / "data"))
     knowledge_dir: Path = field(default_factory=lambda: Path(_str("KNOWLEDGE_DIR") or BASE_DIR / "knowledge"))
-    db_path: Path = field(default_factory=lambda: Path(_str("DB_PATH") or BASE_DIR / "data" / "bot.sqlite3"))
+    db_path: Path | None = field(default_factory=lambda: Path(_str("DB_PATH")) if _str("DB_PATH") else None)
 
     # Recap-relay: Discord (MTFranchiseBot) -> LLM -> Telegram
     discord_bot_token: str = field(default_factory=lambda: _str("DISCORD_BOT_TOKEN"))
@@ -102,9 +103,19 @@ class Settings:
         default_factory=lambda: (int(_str("DISCORD_SOURCE_BOT_ID")) if _str("DISCORD_SOURCE_BOT_ID") else None)
     )
     recap_chat_id: int = field(default_factory=lambda: _int("RECAP_CHAT_ID", 0))
-    recap_state_path: Path = field(
-        default_factory=lambda: Path(_str("RECAP_STATE_PATH") or BASE_DIR / "data" / "recap_state.json")
+    recap_state_path: Path | None = field(
+        default_factory=lambda: Path(_str("RECAP_STATE_PATH")) if _str("RECAP_STATE_PATH") else None
     )
+    # На один рестарт: сбросить recap_state.json (заново анонсировать текущую неделю/игры), затем выключить.
+    recap_reset_on_start: bool = field(
+        default_factory=lambda: _str("RECAP_RESET_ON_START") in {"1", "true", "yes"}
+    )
+
+    def __post_init__(self) -> None:
+        if self.db_path is None:
+            self.db_path = self.data_dir / "bot.sqlite3"
+        if self.recap_state_path is None:
+            self.recap_state_path = self.data_dir / "recap_state.json"
 
     @property
     def recap_relay_enabled(self) -> bool:

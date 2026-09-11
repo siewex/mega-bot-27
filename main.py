@@ -380,6 +380,14 @@ async def main() -> None:
     global store, llm, tools, KNOWLEDGE, BOT_USER
     settings.validate()
 
+    if settings.recap_reset_on_start and settings.recap_state_path.exists():
+        settings.recap_state_path.unlink()
+        log.warning(
+            "RECAP_RESET_ON_START=1: сброшен %s. Не забудь выключить эту переменную после теста, "
+            "иначе каждый рестарт будет заново анонсировать текущую неделю/игры.",
+            settings.recap_state_path,
+        )
+
     KNOWLEDGE = load_knowledge(settings.knowledge_dir)
     store = MessageStore(settings.db_path)
     llm = LLMClient(
