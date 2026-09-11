@@ -33,6 +33,7 @@ from recap_state import RecapState
 from storage import MessageStore
 from textutils import md_to_tg_html, split_message, strip_markdown
 from tools import ToolRunner
+from transactions import format_transactions_message, is_transactions_message, parse_transactions
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -355,6 +356,21 @@ def make_recap_handler(bot: Bot):
     state = RecapState(settings.recap_state_path)
 
     async def handle_recap(raw_text: str) -> None:
+        if is_transactions_message(raw_text):
+            if not settings.transactions_chat_id:
+                return
+            events = parse_transactions(raw_text)
+            new_events = [e for e in events if state.is_new(e.key())]
+            if new_events:
+                text = format_transactions_message(new_events)
+                await bot.send_message(
+                    settings.transactions_chat_id, text, parse_mode="HTML",
+                    link_preview_options=LinkPreviewOptions(is_disabled=True),
+                )
+                for e in new_events:
+                    state.mark_seen(e.key())
+            return
+
         week, games = parse_weekly_board(raw_text)
 
         if week != "?" and state.is_new(schedule_key(week)):

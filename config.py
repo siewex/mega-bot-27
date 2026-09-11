@@ -103,6 +103,7 @@ class Settings:
         default_factory=lambda: (int(_str("DISCORD_SOURCE_BOT_ID")) if _str("DISCORD_SOURCE_BOT_ID") else None)
     )
     recap_chat_id: int = field(default_factory=lambda: _int("RECAP_CHAT_ID", 0))
+    transactions_chat_id: int = field(default_factory=lambda: _int("TRANSACTIONS_CHAT_ID", 0))
     recap_state_path: Path | None = field(
         default_factory=lambda: Path(_str("RECAP_STATE_PATH")) if _str("RECAP_STATE_PATH") else None
     )
