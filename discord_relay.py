@@ -1,4 +1,12 @@
-"""Слушает канал Discord, куда MTFranchiseBot постит уведомления, и прокидывает текст наружу."""
+"""Слушает канал Discord, куда MTFranchiseBot постит уведомления, и прокидывает текст наружу.
+
+MTFranchiseBot присылает сообщения в формате Discord "Components V2" (карточки из
+компонентов, а не старые embed'ы). Установленная версия discord.py не разбирает такие
+компоненты в message.components (получается пустой список несмотря на то, что в
+самом Discord карточка видна), поэтому текст достаём из сырого payload шлюза через
+on_socket_response — туда попадает JSON именно в том виде, в котором его прислал
+Discord, независимо от того, что умеет модель Message конкретной версии библиотеки.
+"""
 import json
 import logging
 from typing import Awaitable, Callable
@@ -10,18 +18,8 @@ log = logging.getLogger(__name__)
 MessageHandler = Callable[[str], Awaitable[None]]
 
 
-def _component_to_dict(component) -> dict | str:
-    if hasattr(component, "to_dict"):
-        try:
-            return component.to_dict()
-        except Exception:
-            pass
-    return repr(component)
-
-
 def _walk_component_text(obj) -> list[str]:
-    """Рекурсивно достаёт текстовые поля ("content") из дерева компонентов Discord
-    (используется в новом формате сообщений Components V2, которым пользуется MTFranchiseBot)."""
+    """Рекурсивно достаёт текстовые поля ("content") из дерева компонентов Discord."""
     texts: list[str] = []
     if isinstance(obj, dict):
         content = obj.get("content")
@@ -39,19 +37,19 @@ def _walk_component_text(obj) -> list[str]:
     return texts
 
 
-def extract_text(message: discord.Message) -> str:
-    parts = [message.content or ""]
-    for embed in message.embeds:
-        if embed.title:
-            parts.append(embed.title)
-        if embed.description:
-            parts.append(embed.description)
-        for field in embed.fields:
-            parts.append(f"{field.name}\n{field.value}")
-        if embed.footer and embed.footer.text:
-            parts.append(embed.footer.text)
-    for component in message.components:
-        parts.extend(_walk_component_text(_component_to_dict(component)))
+def extract_text_from_raw(data: dict) -> str:
+    parts = [data.get("content") or ""]
+    for embed in data.get("embeds") or []:
+        if embed.get("title"):
+            parts.append(embed["title"])
+        if embed.get("description"):
+            parts.append(embed["description"])
+        for field in embed.get("fields") or []:
+            parts.append(f"{field.get('name', '')}\n{field.get('value', '')}")
+        footer = embed.get("footer") or {}
+        if footer.get("text"):
+            parts.append(footer["text"])
+    parts.extend(_walk_component_text(data.get("components") or []))
     return "\n\n".join(p for p in parts if p).strip()
 
 
@@ -67,27 +65,36 @@ class RecapRelayClient(discord.Client):
     async def on_ready(self) -> None:
         log.info("Discord-relay подключён как %s", self.user)
 
-    async def on_message(self, message: discord.Message) -> None:
-        # ВРЕМЕННАЯ диагностика: показать вообще все сообщения, которые видит бот,
-        # чтобы свериться с DISCORD_RECAP_CHANNEL_ID / DISCORD_SOURCE_BOT_ID в .env.
-        components_dump = json.dumps(
-            [_component_to_dict(c) for c in message.components], ensure_ascii=False, default=str
-        )
-        log.info(
-            "on_message: channel_id=%s (нужен %s) author=%s author_id=%s (нужен %s) content_len=%s embeds=%s components=%s",
-            message.channel.id, self.channel_id,
-            message.author, message.author.id, self.source_bot_id,
-            len(message.content or ""), len(message.embeds), components_dump[:2000],
-        )
+    async def on_socket_response(self, msg: dict) -> None:
+        if msg.get("t") != "MESSAGE_CREATE":
+            return
+        data = msg.get("d") or {}
 
-        if message.channel.id != self.channel_id:
+        try:
+            channel_id = int(data.get("channel_id") or 0)
+        except (TypeError, ValueError):
             return
-        if self.source_bot_id is not None and message.author.id != self.source_bot_id:
+        if channel_id != self.channel_id:
             return
-        text = extract_text(message)
+
+        author = data.get("author") or {}
+        try:
+            author_id = int(author.get("id") or 0)
+        except (TypeError, ValueError):
+            author_id = 0
+        if self.source_bot_id is not None and author_id != self.source_bot_id:
+            return
+
+        text = extract_text_from_raw(data)
+        log.info(
+            "MESSAGE_CREATE в целевом канале: author=%s content_len=%s components_len=%s -> text_len=%s",
+            author.get("username"), len(data.get("content") or ""),
+            len(data.get("components") or []), len(text),
+        )
         if not text:
-            log.warning("Сообщение прошло фильтры, но extract_text вернул пусто (content и embeds пустые?)")
+            log.warning("Не удалось извлечь текст из payload: %s", json.dumps(data, ensure_ascii=False)[:2000])
             return
+
         log.info("Получено сообщение из канала-источника: %s", text[:200].replace("\n", " | "))
         try:
             await self.on_recap(text)
