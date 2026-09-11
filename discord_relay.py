@@ -4,8 +4,9 @@ MTFranchiseBot присылает сообщения в формате Discord "
 компонентов, а не старые embed'ы). Установленная версия discord.py не разбирает такие
 компоненты в message.components (получается пустой список несмотря на то, что в
 самом Discord карточка видна), поэтому текст достаём из сырого payload шлюза через
-on_socket_response — туда попадает JSON именно в том виде, в котором его прислал
-Discord, независимо от того, что умеет модель Message конкретной версии библиотеки.
+on_socket_raw_receive (требует enable_debug_events=True при создании клиента) — туда
+попадает JSON именно в том виде, в котором его прислал Discord, независимо от того,
+что умеет модель Message конкретной версии библиотеки.
 """
 import json
 import logging
@@ -67,7 +68,7 @@ class RecapRelayClient(discord.Client):
     async def on_ready(self) -> None:
         log.info("Discord-relay подключён как %s", self.user)
 
-    async def on_socket_response(self, msg: dict) -> None:
+    async def on_socket_raw_receive(self, msg: dict) -> None:
         if msg.get("t") != "MESSAGE_CREATE":
             return
         data = msg.get("d") or {}
