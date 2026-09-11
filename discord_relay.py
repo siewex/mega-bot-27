@@ -84,7 +84,11 @@ class RecapRelayClient(discord.Client):
         if not isinstance(msg, dict):
             return
 
-        if msg.get("t") != "MESSAGE_CREATE":
+        event_type = msg.get("t")
+        # MTFranchiseBot отвечает на слэш-команды с задержкой: Discord сначала создаёт
+        # пустое сообщение-заглушку (MESSAGE_CREATE), а реальная карточка добавляется
+        # позже через редактирование этого же сообщения (MESSAGE_UPDATE). Слушаем оба.
+        if event_type not in ("MESSAGE_CREATE", "MESSAGE_UPDATE"):
             return
         data = msg.get("d") or {}
 
@@ -95,18 +99,20 @@ class RecapRelayClient(discord.Client):
         if channel_id != self.channel_id:
             return
 
-        author = data.get("author") or {}
-        try:
-            author_id = int(author.get("id") or 0)
-        except (TypeError, ValueError):
-            author_id = 0
-        if self.source_bot_id is not None and author_id != self.source_bot_id:
-            return
+        # MESSAGE_UPDATE может присылать частичный payload без "author", если он не менялся.
+        author = data.get("author")
+        if author is not None:
+            try:
+                author_id = int(author.get("id") or 0)
+            except (TypeError, ValueError):
+                author_id = 0
+            if self.source_bot_id is not None and author_id != self.source_bot_id:
+                return
 
         text = extract_text_from_raw(data)
         log.info(
-            "MESSAGE_CREATE в целевом канале: author=%s content_len=%s components_len=%s -> text_len=%s",
-            author.get("username"), len(data.get("content") or ""),
+            "%s в целевом канале: author=%s content_len=%s components_len=%s -> text_len=%s",
+            event_type, (author or {}).get("username"), len(data.get("content") or ""),
             len(data.get("components") or []), len(text),
         )
         if not text:
