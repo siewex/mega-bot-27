@@ -18,7 +18,8 @@ from dataclasses import dataclass
 from teams_map import TEAMS, tag
 
 _ABBR = "|".join(sorted((re.escape(a) for a in TEAMS), key=len, reverse=True))
-_TX_LINE_RE = re.compile(rf"^\s*(?P<team>{_ABBR})\s*-\s*(?P<type>[A-Z_]+)\s*:\s*(?P<player>.+?)\s*$", re.IGNORECASE)
+# Разделитель между командой и типом события у MTFranchiseBot встречался и как "-", и как "·".
+_TX_LINE_RE = re.compile(rf"^\s*(?P<team>{_ABBR})\s*[-·]\s*(?P<type>[A-Z_]+)\s*:\s*(?P<player>.+?)\s*$", re.IGNORECASE)
 
 _TYPE_LABELS = {
     "SIGNING": "Подписание",

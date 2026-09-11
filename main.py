@@ -360,6 +360,9 @@ def make_recap_handler(bot: Bot):
             if not settings.transactions_chat_id:
                 return
             events = parse_transactions(raw_text)
+            if not events:
+                log.warning("Сообщение похоже на Transactions, но ни одной строки не разобралось: %s", raw_text[:300])
+                return
             new_events = [e for e in events if state.is_new(e.key())]
             if new_events:
                 text = format_transactions_message(new_events)
