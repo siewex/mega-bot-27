@@ -1,4 +1,5 @@
 """Слушает канал Discord, куда MTFranchiseBot постит уведомления, и прокидывает текст наружу."""
+import json
 import logging
 from typing import Awaitable, Callable
 
@@ -7,6 +8,35 @@ import discord
 log = logging.getLogger(__name__)
 
 MessageHandler = Callable[[str], Awaitable[None]]
+
+
+def _component_to_dict(component) -> dict | str:
+    if hasattr(component, "to_dict"):
+        try:
+            return component.to_dict()
+        except Exception:
+            pass
+    return repr(component)
+
+
+def _walk_component_text(obj) -> list[str]:
+    """Рекурсивно достаёт текстовые поля ("content") из дерева компонентов Discord
+    (используется в новом формате сообщений Components V2, которым пользуется MTFranchiseBot)."""
+    texts: list[str] = []
+    if isinstance(obj, dict):
+        content = obj.get("content")
+        if isinstance(content, str) and content.strip():
+            texts.append(content)
+        for key in ("components", "children"):
+            for child in obj.get(key) or []:
+                texts.extend(_walk_component_text(child))
+        accessory = obj.get("accessory")
+        if accessory:
+            texts.extend(_walk_component_text(accessory))
+    elif isinstance(obj, (list, tuple)):
+        for item in obj:
+            texts.extend(_walk_component_text(item))
+    return texts
 
 
 def extract_text(message: discord.Message) -> str:
@@ -20,6 +50,8 @@ def extract_text(message: discord.Message) -> str:
             parts.append(f"{field.name}\n{field.value}")
         if embed.footer and embed.footer.text:
             parts.append(embed.footer.text)
+    for component in message.components:
+        parts.extend(_walk_component_text(_component_to_dict(component)))
     return "\n\n".join(p for p in parts if p).strip()
 
 
@@ -38,11 +70,14 @@ class RecapRelayClient(discord.Client):
     async def on_message(self, message: discord.Message) -> None:
         # ВРЕМЕННАЯ диагностика: показать вообще все сообщения, которые видит бот,
         # чтобы свериться с DISCORD_RECAP_CHANNEL_ID / DISCORD_SOURCE_BOT_ID в .env.
+        components_dump = json.dumps(
+            [_component_to_dict(c) for c in message.components], ensure_ascii=False, default=str
+        )
         log.info(
-            "on_message: channel_id=%s (нужен %s) author=%s author_id=%s (нужен %s) content_len=%s embeds=%s",
+            "on_message: channel_id=%s (нужен %s) author=%s author_id=%s (нужен %s) content_len=%s embeds=%s components=%s",
             message.channel.id, self.channel_id,
             message.author, message.author.id, self.source_bot_id,
-            len(message.content or ""), len(message.embeds),
+            len(message.content or ""), len(message.embeds), components_dump[:2000],
         )
 
         if message.channel.id != self.channel_id:
