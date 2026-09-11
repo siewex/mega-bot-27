@@ -68,7 +68,22 @@ class RecapRelayClient(discord.Client):
     async def on_ready(self) -> None:
         log.info("Discord-relay подключён как %s", self.user)
 
-    async def on_socket_raw_receive(self, msg: dict) -> None:
+    async def on_socket_raw_receive(self, msg) -> None:
+        # discord.py отдаёт сюда сырое сообщение шлюза ДО разбора JSON (bytes/str),
+        # а не готовый dict — парсим сами.
+        if isinstance(msg, (bytes, bytearray)):
+            try:
+                msg = msg.decode("utf-8")
+            except UnicodeDecodeError:
+                return
+        if isinstance(msg, str):
+            try:
+                msg = json.loads(msg)
+            except json.JSONDecodeError:
+                return
+        if not isinstance(msg, dict):
+            return
+
         if msg.get("t") != "MESSAGE_CREATE":
             return
         data = msg.get("d") or {}
