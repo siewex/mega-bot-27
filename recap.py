@@ -73,9 +73,9 @@ def schedule_key(week: str) -> str:
 
 
 def format_schedule_message(week: str, games: list[GameEvent]) -> str:
-    lines = [f"📋 <b>Расписание · Неделя {week}</b>", ""]
+    lines = [f"<b>Расписание · Неделя {week}</b>", ""]
     for g in games:
-        lines.append(f"{tag(g.away)}  —  {tag(g.home)}")
+        lines.append(f"{tag(g.away)} — {tag(g.home)}")
     return "\n".join(lines)
 
 
@@ -99,10 +99,10 @@ def format_telegram_message(event: GameEvent, blurb_html: str) -> str:
     winner = event.away if event.away_score > event.home_score else event.home
     win_score, lose_score = sorted((event.away_score, event.home_score), reverse=True)
     lines = [
-        f"🏈 <b>GAME RECAP · Неделя {event.week}</b>",
+        f"<b>GAME RECAP · Неделя {event.week}</b>",
         "",
         f"{tag(event.away)} — {event.away_score}:{event.home_score} — {tag(event.home)}",
-        f"🏆 {tag(winner)} ({win_score}-{lose_score})",
+        f"Победа: {tag(winner)} ({win_score}-{lose_score})",
     ]
     if blurb_html.strip():
         lines += ["", blurb_html.strip()]

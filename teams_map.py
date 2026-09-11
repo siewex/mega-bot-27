@@ -45,7 +45,9 @@ TEAMS = {
 
 
 def tag(abbr: str) -> str:
+    """HTML-ссылка на аббревиатуре команды, ведущая на t.me/<хендл> её владельца."""
     t = TEAMS.get(abbr.upper())
     if not t:
-        return abbr
-    return f"{t['emoji']} {abbr.upper()} ({t['telegram']})"
+        return abbr.upper()
+    handle = t["telegram"].lstrip("@")
+    return f'<a href="https://t.me/{handle}">{abbr.upper()}</a>'
