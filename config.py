@@ -95,6 +95,21 @@ class Settings:
     knowledge_dir: Path = field(default_factory=lambda: Path(_str("KNOWLEDGE_DIR") or BASE_DIR / "knowledge"))
     db_path: Path = field(default_factory=lambda: Path(_str("DB_PATH") or BASE_DIR / "data" / "bot.sqlite3"))
 
+    # Recap-relay: Discord (MTFranchiseBot) -> LLM -> Telegram
+    discord_bot_token: str = field(default_factory=lambda: _str("DISCORD_BOT_TOKEN"))
+    discord_recap_channel_id: int = field(default_factory=lambda: _int("DISCORD_RECAP_CHANNEL_ID", 0))
+    discord_source_bot_id: int | None = field(
+        default_factory=lambda: (int(_str("DISCORD_SOURCE_BOT_ID")) if _str("DISCORD_SOURCE_BOT_ID") else None)
+    )
+    recap_chat_id: int = field(default_factory=lambda: _int("RECAP_CHAT_ID", 0))
+    recap_state_path: Path = field(
+        default_factory=lambda: Path(_str("RECAP_STATE_PATH") or BASE_DIR / "data" / "recap_state.json")
+    )
+
+    @property
+    def recap_relay_enabled(self) -> bool:
+        return bool(self.discord_bot_token and self.discord_recap_channel_id and self.recap_chat_id)
+
     def validate(self) -> None:
         missing = [n for n, v in (("BOT_TOKEN", self.bot_token), ("API_KEY", self.api_key)) if not v]
         if missing:

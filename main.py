@@ -18,8 +18,18 @@ from aiogram.types import BotCommand, LinkPreviewOptions, Message, User
 from aiogram.utils.chat_action import ChatActionSender
 
 from config import settings
+from discord_relay import RecapRelayClient
 from llm import LLMClient, LLMError
 from prompt import build_system_prompt, load_knowledge
+from recap import (
+    format_schedule_message,
+    format_telegram_message,
+    game_key,
+    generate_blurb,
+    parse_weekly_board,
+    schedule_key,
+)
+from recap_state import RecapState
 from storage import MessageStore
 from textutils import md_to_tg_html, split_message, strip_markdown
 from tools import ToolRunner
@@ -341,6 +351,31 @@ async def periodic_cleanup() -> None:
         await asyncio.sleep(12 * 3600)
 
 
+def make_recap_handler(bot: Bot):
+    state = RecapState(settings.recap_state_path)
+
+    async def handle_recap(raw_text: str) -> None:
+        week, games = parse_weekly_board(raw_text)
+
+        if week != "?" and state.is_new(schedule_key(week)):
+            schedule_text = format_schedule_message(week, games)
+            await bot.send_message(settings.recap_chat_id, schedule_text, parse_mode="HTML")
+            state.mark_seen(schedule_key(week))
+
+        completed = [g for g in games if g.is_completed]
+        new_games = [g for g in completed if state.is_new(game_key(g))]
+        for event in new_games:
+            try:
+                blurb = await generate_blurb(llm, event)
+            except LLMError as e:
+                log.error("LLM не сгенерировала recap (%s), отправляю без хайп-текста", e)
+                blurb = ""
+            text = format_telegram_message(event, md_to_tg_html(blurb) if blurb else "")
+            await bot.send_message(settings.recap_chat_id, text, parse_mode="HTML")
+            state.mark_seen(game_key(event))
+    return handle_recap
+
+
 async def main() -> None:
     global store, llm, tools, KNOWLEDGE, BOT_USER
     settings.validate()
@@ -378,11 +413,29 @@ async def main() -> None:
     dp = Dispatcher()
     dp.include_router(router)
     cleanup_task = asyncio.create_task(periodic_cleanup())
+
+    discord_client: RecapRelayClient | None = None
+    discord_task: asyncio.Task | None = None
+    if settings.recap_relay_enabled:
+        discord_client = RecapRelayClient(
+            channel_id=settings.discord_recap_channel_id,
+            source_bot_id=settings.discord_source_bot_id,
+            on_recap=make_recap_handler(bot),
+        )
+        discord_task = asyncio.create_task(discord_client.start(settings.discord_bot_token))
+        log.info("Discord-relay включён: канал %s -> Telegram чат %s", settings.discord_recap_channel_id, settings.recap_chat_id)
+    else:
+        log.info("Discord-relay выключен (не заданы DISCORD_BOT_TOKEN / DISCORD_RECAP_CHANNEL_ID / RECAP_CHAT_ID)")
+
     try:
         await bot.delete_webhook(drop_pending_updates=True)
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
         cleanup_task.cancel()
+        if discord_task is not None:
+            discord_task.cancel()
+        if discord_client is not None:
+            await discord_client.close()
         await llm.close()
         await bot.session.close()
 
