@@ -57,7 +57,9 @@ class RecapRelayClient(discord.Client):
     def __init__(self, channel_id: int, source_bot_id: int | None, on_recap: MessageHandler):
         intents = discord.Intents.default()
         intents.message_content = True
-        super().__init__(intents=intents)
+        # on_socket_response по умолчанию отключён в discord.py ради производительности —
+        # без этого флага он никогда не вызывается.
+        super().__init__(intents=intents, enable_debug_events=True)
         self.channel_id = channel_id
         self.source_bot_id = source_bot_id
         self.on_recap = on_recap
