@@ -36,12 +36,22 @@ class RecapRelayClient(discord.Client):
         log.info("Discord-relay подключён как %s", self.user)
 
     async def on_message(self, message: discord.Message) -> None:
+        # ВРЕМЕННАЯ диагностика: показать вообще все сообщения, которые видит бот,
+        # чтобы свериться с DISCORD_RECAP_CHANNEL_ID / DISCORD_SOURCE_BOT_ID в .env.
+        log.info(
+            "on_message: channel_id=%s (нужен %s) author=%s author_id=%s (нужен %s) content_len=%s embeds=%s",
+            message.channel.id, self.channel_id,
+            message.author, message.author.id, self.source_bot_id,
+            len(message.content or ""), len(message.embeds),
+        )
+
         if message.channel.id != self.channel_id:
             return
         if self.source_bot_id is not None and message.author.id != self.source_bot_id:
             return
         text = extract_text(message)
         if not text:
+            log.warning("Сообщение прошло фильтры, но extract_text вернул пусто (content и embeds пустые?)")
             return
         log.info("Получено сообщение из канала-источника: %s", text[:200].replace("\n", " | "))
         try:
