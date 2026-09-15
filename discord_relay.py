@@ -10,6 +10,7 @@ on_socket_raw_receive (требует enable_debug_events=True при созда
 """
 import json
 import logging
+import re
 from typing import Awaitable, Callable
 
 import discord
@@ -17,6 +18,10 @@ import discord
 log = logging.getLogger(__name__)
 
 MessageHandler = Callable[[str], Awaitable[None]]
+
+# Кастомные эмодзи Discord в тексте выглядят как <:name:id> / <a:name:id> —
+# для наших парсеров это мусор перед аббревиатурой команды, вырезаем их.
+_CUSTOM_EMOJI_RE = re.compile(r"<a?:\w+:\d+>")
 
 
 def _walk_component_text(obj) -> list[str]:
@@ -51,7 +56,8 @@ def extract_text_from_raw(data: dict) -> str:
         if footer.get("text"):
             parts.append(footer["text"])
     parts.extend(_walk_component_text(data.get("components") or []))
-    return "\n\n".join(p for p in parts if p).strip()
+    text = "\n\n".join(p for p in parts if p).strip()
+    return _CUSTOM_EMOJI_RE.sub("", text)
 
 
 class RecapRelayClient(discord.Client):

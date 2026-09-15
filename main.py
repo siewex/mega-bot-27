@@ -26,6 +26,8 @@ from recap import (
     format_telegram_message,
     game_key,
     generate_blurb,
+    is_final_score_message,
+    parse_final_score_message,
     parse_weekly_board,
     schedule_key,
 )
@@ -374,8 +376,28 @@ def make_recap_handler(bot: Bot):
                     state.mark_seen(e.key())
             return
 
-        week, games = parse_weekly_board(raw_text)
+        if is_final_score_message(raw_text):
+            event = parse_final_score_message(raw_text)
+            if event is None:
+                log.warning("Похоже на Final scores, но не удалось разобрать счёт: %s", raw_text[:300])
+                return
+            if state.is_new(game_key(event)):
+                try:
+                    blurb = await generate_blurb(llm, event)
+                except LLMError as e:
+                    log.error("LLM не сгенерировала recap (%s), отправляю без хайп-текста", e)
+                    blurb = ""
+                text = format_telegram_message(event, md_to_tg_html(blurb) if blurb else "")
+                await bot.send_message(
+                    settings.recap_chat_id, text, parse_mode="HTML",
+                    link_preview_options=LinkPreviewOptions(is_disabled=True),
+                )
+                state.mark_seen(game_key(event))
+            return
 
+        # Сводка `scores` теперь используется только для расписания — recap по
+        # сыгранным играм строится на отдельных уведомлениях Final scores выше.
+        week, games = parse_weekly_board(raw_text)
         if week != "?" and state.is_new(schedule_key(week)):
             schedule_text = format_schedule_message(week, games)
             await bot.send_message(
@@ -383,21 +405,6 @@ def make_recap_handler(bot: Bot):
                 link_preview_options=LinkPreviewOptions(is_disabled=True),
             )
             state.mark_seen(schedule_key(week))
-
-        completed = [g for g in games if g.is_completed]
-        new_games = [g for g in completed if state.is_new(game_key(g))]
-        for event in new_games:
-            try:
-                blurb = await generate_blurb(llm, event)
-            except LLMError as e:
-                log.error("LLM не сгенерировала recap (%s), отправляю без хайп-текста", e)
-                blurb = ""
-            text = format_telegram_message(event, md_to_tg_html(blurb) if blurb else "")
-            await bot.send_message(
-                settings.recap_chat_id, text, parse_mode="HTML",
-                link_preview_options=LinkPreviewOptions(is_disabled=True),
-            )
-            state.mark_seen(game_key(event))
     return handle_recap
 
 

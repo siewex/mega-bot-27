@@ -24,6 +24,16 @@ _COMPLETED_RE = re.compile(
 _SCHEDULED_RE = re.compile(rf"^\s*(?P<away>{_ABBR})\s*@\s*(?P<home>{_ABBR})\s*$", re.IGNORECASE)
 _WEEK_RE = re.compile(r"week\s*(\d+)", re.IGNORECASE)
 
+# Отдельное авто-уведомление MTFranchiseBot по каждой сыгранной игре, например:
+#   Final scores
+#   SF 0 @ LAC 31
+#   Data as of ...
+# В отличие от сводки `scores`, номера недели тут нет.
+_FINAL_SCORE_RE = re.compile(
+    rf"(?P<away>{_ABBR})\s+(?P<away_score>\d{{1,3}})\s*@\s*(?P<home>{_ABBR})\s+(?P<home_score>\d{{1,3}})",
+    re.IGNORECASE,
+)
+
 
 @dataclass
 class GameEvent:
@@ -64,8 +74,28 @@ def parse_weekly_board(raw_text: str) -> tuple[str, list[GameEvent]]:
     return week, games
 
 
+def is_final_score_message(raw_text: str) -> bool:
+    return "final score" in raw_text.strip().lower()
+
+
+def parse_final_score_message(raw_text: str) -> GameEvent | None:
+    m = _FINAL_SCORE_RE.search(raw_text)
+    if not m:
+        return None
+    return GameEvent(
+        week="",
+        away=m.group("away").upper(),
+        home=m.group("home").upper(),
+        away_score=int(m.group("away_score")),
+        home_score=int(m.group("home_score")),
+    )
+
+
 def game_key(event: GameEvent) -> str:
-    return f"game:{event.week}:{event.away}:{event.home}"
+    if event.week and event.week != "?":
+        return f"game:{event.week}:{event.away}:{event.home}"
+    # Уведомление Final scores не содержит номер недели — дедуп по самому счёту.
+    return f"game:{event.away}:{event.away_score}:{event.home}:{event.home_score}"
 
 
 def schedule_key(week: str) -> str:
@@ -86,8 +116,13 @@ RECAP_SYSTEM_PROMPT = (
 )
 
 
+def _has_week(event: GameEvent) -> bool:
+    return bool(event.week) and event.week != "?"
+
+
 async def generate_blurb(llm, event: GameEvent) -> str:
-    user_content = f"Неделя {event.week}: {event.away} {event.away_score} — {event.home_score} {event.home}."
+    week_part = f"Неделя {event.week}: " if _has_week(event) else ""
+    user_content = f"{week_part}{event.away} {event.away_score} — {event.home_score} {event.home}."
     messages = [
         {"role": "system", "content": RECAP_SYSTEM_PROMPT},
         {"role": "user", "content": user_content},
@@ -98,8 +133,9 @@ async def generate_blurb(llm, event: GameEvent) -> str:
 def format_telegram_message(event: GameEvent, blurb_html: str) -> str:
     winner = event.away if event.away_score > event.home_score else event.home
     win_score, lose_score = sorted((event.away_score, event.home_score), reverse=True)
+    header = f"<b>GAME RECAP · Неделя {event.week}</b>" if _has_week(event) else "<b>GAME RECAP</b>"
     lines = [
-        f"<b>GAME RECAP · Неделя {event.week}</b>",
+        header,
         "",
         f"{tag(event.away)} — {event.away_score}:{event.home_score} — {tag(event.home)}",
         f"Победа: {tag(winner)} ({win_score}-{lose_score})",
