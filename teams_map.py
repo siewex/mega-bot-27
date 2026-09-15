@@ -18,7 +18,7 @@ TEAMS = {
 
     "TEN": {"emoji": "⚔️", "telegram": "@kkkkkk13_13", "custom_emoji_id": "5206388746672415857", "custom_emoji_fallback": "🔥"},
     "IND": {"emoji": "🧲", "telegram": "@GilTimRus", "custom_emoji_id": "5206314014241466902", "custom_emoji_fallback": "🐴"},
-    "HOU": {"emoji": "🇨🇱", "telegram": "@Imam", "custom_emoji_id": "5206189670643280699", "custom_emoji_fallback": "🏇"},
+    "HOU": {"emoji": "🇨🇱", "telegram": "705595647", "custom_emoji_id": "5206189670643280699", "custom_emoji_fallback": "🏇"},
     "JAX": {"emoji": "😾", "telegram": "@StasVII", "custom_emoji_id": "5208468614650275488", "custom_emoji_fallback": "🐈"},
 
     "LV": {"emoji": "☠️", "telegram": "@Hvosssteg", "custom_emoji_id": "5208752254290503931", "custom_emoji_fallback": "🏴‍☠️"},
@@ -49,13 +49,19 @@ TEAMS = {
 }
 
 
+def _profile_url(telegram: str) -> str:
+    """@username -> t.me/username; голый числовой user_id (нет юзернейма) -> tg://user?id=..."""
+    if telegram.lstrip("@").isdigit():
+        return f"tg://user?id={telegram.lstrip('@')}"
+    return f"https://t.me/{telegram.lstrip('@')}"
+
+
 def tag(abbr: str) -> str:
-    """Премиум-эмодзи с логотипом команды + HTML-ссылка на t.me/<хендл> её владельца."""
+    """Премиум-эмодзи с логотипом команды + HTML-ссылка на владельца (по юзернейму или user_id)."""
     t = TEAMS.get(abbr.upper())
     if not t:
         return abbr.upper()
-    handle = t["telegram"].lstrip("@")
-    link = f'<a href="https://t.me/{handle}">{abbr.upper()}</a>'
+    link = f'<a href="{_profile_url(t["telegram"])}">{abbr.upper()}</a>'
     emoji_id = t.get("custom_emoji_id")
     if not emoji_id:
         return link
