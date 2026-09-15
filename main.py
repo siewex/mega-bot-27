@@ -22,6 +22,7 @@ from discord_relay import RecapRelayClient
 from llm import LLMClient, LLMError
 from prompt import build_system_prompt, load_knowledge
 from recap import (
+    GameEvent,
     format_schedule_message,
     format_telegram_message,
     game_key,
@@ -35,7 +36,7 @@ from recap_state import RecapState
 from storage import MessageStore
 from textutils import md_to_tg_html, split_message, strip_markdown
 from tools import ToolRunner
-from transactions import format_transactions_message, is_transactions_message, parse_transactions
+from transactions import TransactionEvent, format_transactions_message, is_transactions_message, parse_transactions
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -281,6 +282,50 @@ async def cmd_emojiid(message: Message) -> None:
         return
     lines = [f"{_utf16_slice(text, e.offset, e.length)} → <code>{e.custom_emoji_id}</code>" for e in found]
     await message.reply("\n".join(lines), parse_mode="HTML")
+
+
+TEST_SCHEDULE_GAMES = [
+    GameEvent("ТЕСТ", "MIN", "NYG", None, None),
+    GameEvent("ТЕСТ", "KC", "BUF", None, None),
+    GameEvent("ТЕСТ", "PIT", "CIN", None, None),
+]
+TEST_RECAP_EVENT = GameEvent(week="", away="MIN", home="NYG", away_score=17, home_score=38)
+TEST_TRANSACTIONS = [
+    TransactionEvent(team="JAX", type="SIGNING", player="DaQuan Jones"),
+    TransactionEvent(team="DET", type="RELEASE", player="Jack Kiser"),
+]
+
+
+@router.message(Command("testschedule"))
+async def cmd_testschedule(message: Message) -> None:
+    """Админская утилита: пример сообщения с расписанием — уходит в этот же чат, без ожидания реальной недели."""
+    if not is_admin(message.from_user.id if message.from_user else None):
+        return
+    text = format_schedule_message("ТЕСТ", TEST_SCHEDULE_GAMES)
+    await message.answer(text, parse_mode="HTML", link_preview_options=LinkPreviewOptions(is_disabled=True))
+
+
+@router.message(Command("testrecap"))
+async def cmd_testrecap(message: Message) -> None:
+    """Админская утилита: пример GAME RECAP (с реальным хайп-текстом от LLM) — уходит в этот же чат."""
+    if not is_admin(message.from_user.id if message.from_user else None):
+        return
+    try:
+        blurb = await generate_blurb(llm, TEST_RECAP_EVENT)
+    except LLMError as e:
+        await message.answer(f"LLM не ответила: {e}")
+        blurb = ""
+    text = format_telegram_message(TEST_RECAP_EVENT, md_to_tg_html(blurb) if blurb else "")
+    await message.answer(text, parse_mode="HTML", link_preview_options=LinkPreviewOptions(is_disabled=True))
+
+
+@router.message(Command("testtransactions"))
+async def cmd_testtransactions(message: Message) -> None:
+    """Админская утилита: пример сообщения с трансферами — уходит в этот же чат."""
+    if not is_admin(message.from_user.id if message.from_user else None):
+        return
+    text = format_transactions_message(TEST_TRANSACTIONS)
+    await message.answer(text, parse_mode="HTML", link_preview_options=LinkPreviewOptions(is_disabled=True))
 
 
 @router.message(Command("reload"))
