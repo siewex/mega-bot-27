@@ -258,6 +258,31 @@ async def cmd_id(message: Message) -> None:
     await message.reply(f"chat_id: <code>{message.chat.id}</code>\nuser_id: <code>{uid}</code>", parse_mode="HTML")
 
 
+def _utf16_slice(text: str, offset: int, length: int) -> str:
+    """Entity offset/length у Telegram — в UTF-16 code units, не в символах Python."""
+    encoded = text.encode("utf-16-le")
+    return encoded[offset * 2 : (offset + length) * 2].decode("utf-16-le", errors="ignore")
+
+
+@router.message(Command("emojiid"))
+async def cmd_emojiid(message: Message) -> None:
+    """Админская утилита: ответь этой командой на сообщение с премиум/кастомным эмодзи — вернёт его custom_emoji_id."""
+    if not is_admin(message.from_user.id if message.from_user else None):
+        return
+    target = message.reply_to_message
+    if not target:
+        await message.reply("Ответь этой командой на сообщение с нужным эмодзи.")
+        return
+    text = target.text or target.caption or ""
+    entities = (target.entities or []) + (target.caption_entities or [])
+    found = [e for e in entities if e.type == "custom_emoji"]
+    if not found:
+        await message.reply("В этом сообщении не нашёл кастомных/премиум эмодзи.")
+        return
+    lines = [f"{_utf16_slice(text, e.offset, e.length)} → <code>{e.custom_emoji_id}</code>" for e in found]
+    await message.reply("\n".join(lines), parse_mode="HTML")
+
+
 @router.message(Command("reload"))
 async def cmd_reload(message: Message) -> None:
     global KNOWLEDGE
