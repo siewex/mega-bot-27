@@ -13,8 +13,12 @@ recap строится только на финальном счёте. Одна
 """
 import re
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 
 from teams_map import TEAMS, tag
+
+MSK = timezone(timedelta(hours=3))
+SCHEDULE_DEADLINE_HOURS = 40
 
 _ABBR = "|".join(sorted((re.escape(a) for a in TEAMS), key=len, reverse=True))
 _COMPLETED_RE = re.compile(
@@ -106,6 +110,14 @@ def format_schedule_message(week: str, games: list[GameEvent]) -> str:
     lines = [f"<b>Расписание · Неделя {week}</b>", ""]
     for g in games:
         lines.append(f"{tag(g.away)} — {tag(g.home)}")
+
+    deadline = datetime.now(MSK) + timedelta(hours=SCHEDULE_DEADLINE_HOURS)
+    lines += [
+        "",
+        "❗️Пожалуйста, договоритесь прямо сейчас о матче во избежание затяжек шага.",
+        "",
+        f"До {deadline.strftime('%d.%m.%Y %H:%M')} (МСК) просьба указать анонс матча реплаем к этому посту.",
+    ]
     return "\n".join(lines)
 
 

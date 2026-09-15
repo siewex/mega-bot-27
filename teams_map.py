@@ -1,53 +1,63 @@
-"""Команды лиги: эмодзи + телеграм-аккаунт менеджера. Ключи — аббревиатуры madden.tools/MTFranchiseBot."""
+"""Команды лиги: эмодзи + телеграм-аккаунт менеджера. Ключи — аббревиатуры madden.tools/MTFranchiseBot.
+
+custom_emoji_id — премиум-эмодзи Telegram с логотипом команды (нужен Premium у владельца
+бота @maddensupportbot, см. https://habr.com/ru/articles/994622/). custom_emoji_fallback —
+обычный эмодзи, который увидят клиенты без поддержки кастомных эмодзи.
+"""
 
 TEAMS = {
-    "PIT": {"emoji": "👷‍♂️", "telegram": "@kislik34"},
-    "CIN": {"emoji": "🐅", "telegram": "@Asttema"},
-    "CLE": {"emoji": "🤎", "telegram": "@lespaul88"},
-    "BAL": {"emoji": "🦉", "telegram": "@Arturetti"},
+    "PIT": {"emoji": "👷‍♂️", "telegram": "@kislik34", "custom_emoji_id": "5208532356259916321", "custom_emoji_fallback": "✨"},
+    "CIN": {"emoji": "🐅", "telegram": "@Asttema", "custom_emoji_id": "5206571222652954279", "custom_emoji_fallback": "🐅"},
+    "CLE": {"emoji": "🤎", "telegram": "@lespaul88", "custom_emoji_id": "5208488002132649123", "custom_emoji_fallback": "🤎"},
+    "BAL": {"emoji": "🦉", "telegram": "@Arturetti", "custom_emoji_id": "5208649879450035589", "custom_emoji_fallback": "🐣"},
 
-    "NE": {"emoji": "💂", "telegram": "@fnolzoar"},
-    "MIA": {"emoji": "🐬", "telegram": "@l3dn1q"},
-    "BUF": {"emoji": "🐂", "telegram": "@DaniVRN"},
-    "NYJ": {"emoji": "✈️", "telegram": "@Ajoudojuau"},
+    "NE": {"emoji": "💂", "telegram": "@fnolzoar", "custom_emoji_id": "5208620025132362487", "custom_emoji_fallback": "🏴󠁧󠁢󠁥󠁮󠁧󠁿"},
+    "MIA": {"emoji": "🐬", "telegram": "@l3dn1q", "custom_emoji_id": "5206303933953224077", "custom_emoji_fallback": "🐬"},
+    "BUF": {"emoji": "🐂", "telegram": "@DaniVRN", "custom_emoji_id": "5208665603325310207", "custom_emoji_fallback": "🐂"},
+    "NYJ": {"emoji": "✈️", "telegram": "@Ajoudojuau", "custom_emoji_id": "5208678982148436084", "custom_emoji_fallback": "🛩"},
 
-    "TEN": {"emoji": "⚔️", "telegram": "@kkkkkk13_13"},
-    "IND": {"emoji": "🧲", "telegram": "@GilTimRus"},
-    "HOU": {"emoji": "🇨🇱", "telegram": "@Imam"},
-    "JAX": {"emoji": "😾", "telegram": "@StasVII"},
+    "TEN": {"emoji": "⚔️", "telegram": "@kkkkkk13_13", "custom_emoji_id": "5206388746672415857", "custom_emoji_fallback": "🔥"},
+    "IND": {"emoji": "🧲", "telegram": "@GilTimRus", "custom_emoji_id": "5206314014241466902", "custom_emoji_fallback": "🐴"},
+    "HOU": {"emoji": "🇨🇱", "telegram": "@Imam", "custom_emoji_id": "5206189670643280699", "custom_emoji_fallback": "🏇"},
+    "JAX": {"emoji": "😾", "telegram": "@StasVII", "custom_emoji_id": "5208468614650275488", "custom_emoji_fallback": "🐈"},
 
-    "LV": {"emoji": "☠️", "telegram": "@Hvosssteg"},
-    "DEN": {"emoji": "🐎", "telegram": "@DrobiazgoD"},
-    "LAC": {"emoji": "⚡️", "telegram": "@dail87"},
-    "KC": {"emoji": "🏹", "telegram": "@mahomes15"},
+    "LV": {"emoji": "☠️", "telegram": "@Hvosssteg", "custom_emoji_id": "5208752254290503931", "custom_emoji_fallback": "🏴‍☠️"},
+    "DEN": {"emoji": "🐎", "telegram": "@DrobiazgoD", "custom_emoji_id": "5208581374721666314", "custom_emoji_fallback": "🐴"},
+    "LAC": {"emoji": "⚡️", "telegram": "@dail87", "custom_emoji_id": "5206434058577389431", "custom_emoji_fallback": "⚡️"},
+    "KC": {"emoji": "🏹", "telegram": "@mahomes15", "custom_emoji_id": "5206458754639341995", "custom_emoji_fallback": "👨‍🍳"},
 
-    "MIN": {"emoji": "🇦🇽", "telegram": "@MarcusHoper"},
-    "DET": {"emoji": "🦁", "telegram": "@mishgek"},
-    "CHI": {"emoji": "🐻", "telegram": "@MikeRyabikin"},
-    "GB": {"emoji": "📦", "telegram": "@harley47"},
+    "MIN": {"emoji": "🇦🇽", "telegram": "@MarcusHoper", "custom_emoji_id": "5206535630258972738", "custom_emoji_fallback": "🧭"},
+    "DET": {"emoji": "🦁", "telegram": "@mishgek", "custom_emoji_id": "5206586216383785091", "custom_emoji_fallback": "🦁"},
+    "CHI": {"emoji": "🐻", "telegram": "@MikeRyabikin", "custom_emoji_id": "5206672098549836409", "custom_emoji_fallback": "🐻"},
+    "GB": {"emoji": "📦", "telegram": "@harley47", "custom_emoji_id": "5208574640212945194", "custom_emoji_fallback": "🟩"},
 
-    "PHI": {"emoji": "🦅", "telegram": "@bernikoww"},
-    "NYG": {"emoji": "🏙", "telegram": "@defisparta"},
-    "WAS": {"emoji": "🫡", "telegram": "@Laruzz"},
-    "DAL": {"emoji": "🤠", "telegram": "@Chippolllino"},
+    "PHI": {"emoji": "🦅", "telegram": "@bernikoww", "custom_emoji_id": "5206328011539884358", "custom_emoji_fallback": "🦅"},
+    "NYG": {"emoji": "🏙", "telegram": "@defisparta", "custom_emoji_id": "5208648389096384740", "custom_emoji_fallback": "🗽"},
+    "WAS": {"emoji": "🫡", "telegram": "@Laruzz", "custom_emoji_id": "5208897394120337040", "custom_emoji_fallback": "😶"},
+    "DAL": {"emoji": "🤠", "telegram": "@Chippolllino", "custom_emoji_id": "5208937414625601188", "custom_emoji_fallback": "🤠"},
 
-    "ATL": {"emoji": "🪶", "telegram": "@Oleg_Oleynikov"},
-    "TB": {"emoji": "🏴‍☠️", "telegram": "@teodossi"},
-    "CAR": {"emoji": "🐈‍⬛️", "telegram": "@udzhinable"},
-    "NO": {"emoji": "⚜️", "telegram": "@ellwoood"},
+    "ATL": {"emoji": "🪶", "telegram": "@Oleg_Oleynikov", "custom_emoji_id": "5206341686715754659", "custom_emoji_fallback": "🦅"},
+    "TB": {"emoji": "🏴‍☠️", "telegram": "@teodossi", "custom_emoji_id": "5208947572223256404", "custom_emoji_fallback": "🏴‍☠️"},
+    "CAR": {"emoji": "🐈‍⬛️", "telegram": "@udzhinable", "custom_emoji_id": "5208836903800940525", "custom_emoji_fallback": "🐈‍⬛"},
+    "NO": {"emoji": "⚜️", "telegram": "@ellwoood", "custom_emoji_id": "5208779540217736904", "custom_emoji_fallback": "😇"},
 
-    "SEA": {"emoji": "🌧", "telegram": "@Archi059"},
-    "SF": {"emoji": "🌉", "telegram": "@cronnmaksim"},
-    "LAR": {"emoji": "🐏", "telegram": "@wicked_kiD"},
-    "AZ": {"emoji": "🐦", "telegram": "@Dimadontpoint"},
-    "ARI": {"emoji": "🐦", "telegram": "@Dimadontpoint"},
+    "SEA": {"emoji": "🌧", "telegram": "@Archi059", "custom_emoji_id": "5208838157931390018", "custom_emoji_fallback": "🦅"},
+    "SF": {"emoji": "🌉", "telegram": "@cronnmaksim", "custom_emoji_id": "5208592288233564730", "custom_emoji_fallback": "4️⃣"},
+    "LAR": {"emoji": "🐏", "telegram": "@wicked_kiD", "custom_emoji_id": "5206462469786051454", "custom_emoji_fallback": "🐏"},
+    "AZ": {"emoji": "🐦", "telegram": "@Dimadontpoint", "custom_emoji_id": "5206353381911700760", "custom_emoji_fallback": "🌅"},
+    "ARI": {"emoji": "🐦", "telegram": "@Dimadontpoint", "custom_emoji_id": "5206353381911700760", "custom_emoji_fallback": "🌅"},
 }
 
 
 def tag(abbr: str) -> str:
-    """HTML-ссылка на аббревиатуре команды, ведущая на t.me/<хендл> её владельца."""
+    """Премиум-эмодзи с логотипом команды + HTML-ссылка на t.me/<хендл> её владельца."""
     t = TEAMS.get(abbr.upper())
     if not t:
         return abbr.upper()
     handle = t["telegram"].lstrip("@")
-    return f'<a href="https://t.me/{handle}">{abbr.upper()}</a>'
+    link = f'<a href="https://t.me/{handle}">{abbr.upper()}</a>'
+    emoji_id = t.get("custom_emoji_id")
+    if not emoji_id:
+        return link
+    fallback = t.get("custom_emoji_fallback") or "🏈"
+    return f'<tg-emoji emoji-id="{emoji_id}">{fallback}</tg-emoji> {link}'
