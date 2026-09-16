@@ -23,6 +23,7 @@ from llm import LLMClient, LLMError
 from prompt import build_system_prompt, load_knowledge
 from recap import (
     GameEvent,
+    format_remaining_message,
     format_schedule_message,
     format_telegram_message,
     game_key,
@@ -30,6 +31,7 @@ from recap import (
     is_final_score_message,
     parse_final_score_message,
     parse_weekly_board,
+    remaining_key,
     schedule_key,
 )
 from recap_state import RecapState
@@ -465,16 +467,34 @@ def make_recap_handler(bot: Bot):
                 state.mark_seen(game_key(event))
             return
 
-        # Сводка `scores` теперь используется только для расписания — recap по
-        # сыгранным играм строится на отдельных уведомлениях Final scores выше.
+        # Сводка `scores` используется для расписания — recap по сыгранным играм
+        # строится на отдельных уведомлениях Final scores выше.
         week, games = parse_weekly_board(raw_text)
-        if week != "?" and state.is_new(schedule_key(week)):
-            schedule_text = format_schedule_message(week, games)
-            await bot.send_message(
-                settings.recap_chat_id, schedule_text, parse_mode="HTML",
-                link_preview_options=LinkPreviewOptions(is_disabled=True),
-            )
-            state.mark_seen(schedule_key(week))
+        if week == "?":
+            return
+
+        if not any(g.is_completed for g in games):
+            if state.is_new(schedule_key(week)):
+                schedule_text = format_schedule_message(week, games)
+                await bot.send_message(
+                    settings.recap_chat_id, schedule_text, parse_mode="HTML",
+                    link_preview_options=LinkPreviewOptions(is_disabled=True),
+                )
+                state.mark_seen(schedule_key(week))
+            return
+
+        # Неделя уже в процессе (где-то есть счёт) — напоминаем, какие игры ещё не сыграны.
+        # Срабатывает заново только когда сам набор оставшихся игр меняется.
+        unplayed = [g for g in games if not g.is_completed]
+        if unplayed:
+            rkey = remaining_key(week, unplayed)
+            if state.is_new(rkey):
+                text = format_remaining_message(week, unplayed)
+                await bot.send_message(
+                    settings.recap_chat_id, text, parse_mode="HTML",
+                    link_preview_options=LinkPreviewOptions(is_disabled=True),
+                )
+                state.mark_seen(rkey)
     return handle_recap
 
 

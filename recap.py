@@ -106,6 +106,10 @@ def schedule_key(week: str) -> str:
     return f"schedule:{week}"
 
 
+REGLAMENT_URL = "https://docs.google.com/document/d/1cHbgmnUaXN4A5dCJxLxayCvIlJ6pMBMUxN8HlX1vxPs/edit?usp=drivesdk"
+MADDEN_TOOLS_URL = "https://madden.tools/franchise/leagues/00a9f6ec-c3f8-4c0b-b45b-c133075be445"
+
+
 def format_schedule_message(week: str, games: list[GameEvent]) -> str:
     lines = [f"<b>Расписание · Неделя {week}</b>", ""]
     for g in games:
@@ -117,7 +121,22 @@ def format_schedule_message(week: str, games: list[GameEvent]) -> str:
         "❗️Пожалуйста, договоритесь прямо сейчас о матче во избежание затяжек шага.",
         "",
         f"До {deadline.strftime('%d.%m.%Y %H:%M')} (МСК) просьба указать анонс матча реплаем к этому посту.",
+        "",
+        f"📜 Регламент: {REGLAMENT_URL}",
+        f"📊 Стата на MaddenTools: {MADDEN_TOOLS_URL}",
     ]
+    return "\n".join(lines)
+
+
+def remaining_key(week: str, unplayed: list[GameEvent]) -> str:
+    matchups = sorted(f"{g.away}-{g.home}" for g in unplayed)
+    return f"remaining:{week}:{','.join(matchups)}"
+
+
+def format_remaining_message(week: str, unplayed: list[GameEvent]) -> str:
+    lines = [f"<b>Ещё не сыграно · Неделя {week}</b>", ""]
+    for g in unplayed:
+        lines.append(f"{tag(g.away)} — {tag(g.home)}")
     return "\n".join(lines)
 
 
