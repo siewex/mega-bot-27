@@ -122,8 +122,8 @@ def format_schedule_message(week: str, games: list[GameEvent]) -> str:
         "",
         f"До {deadline.strftime('%d.%m.%Y %H:%M')} (МСК) просьба указать анонс матча реплаем к этому посту.",
         "",
-        f"📜 Регламент: {REGLAMENT_URL}",
-        f"📊 Стата на MaddenTools: {MADDEN_TOOLS_URL}",
+        f'📜 <a href="{REGLAMENT_URL}">Регламент</a>',
+        f'📊 <a href="{MADDEN_TOOLS_URL}">Стата на MaddenTools</a>',
     ]
     return "\n".join(lines)
 
