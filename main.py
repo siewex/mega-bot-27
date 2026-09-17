@@ -90,6 +90,14 @@ def real_reply(message: Message) -> Message | None:
     return reply
 
 
+def is_schedule_post(message: Message | None) -> bool:
+    """Пост с расписанием — туда отвечают анонсами матчей, а не вопросами к боту."""
+    if message is None:
+        return False
+    text = message.text or message.caption or ""
+    return text.startswith("Расписание · Неделя")
+
+
 def mentions_bot(message: Message) -> bool:
     if BOT_USER is None:
         return False
@@ -136,7 +144,7 @@ def should_respond(message: Message) -> bool:
     if message.chat.type == "private":
         return True
     reply = real_reply(message)
-    if reply and BOT_USER and reply.from_user and reply.from_user.id == BOT_USER.id:
+    if reply and BOT_USER and reply.from_user and reply.from_user.id == BOT_USER.id and not is_schedule_post(reply):
         return True
     if mentions_bot(message):
         return True
