@@ -4,6 +4,7 @@
 или (опционально) по ключевым словам. Ведёт диалог по ветке ответов.
 """
 import asyncio
+import html
 import logging
 import os
 import re
@@ -34,6 +35,7 @@ from recap import (
     remaining_key,
     schedule_key,
 )
+from game_schedule import find_team_by_telegram, find_game_for_team, format_status_message, format_when, parse_game_time, save_gametime, save_week_games, GameTimeRecord
 from recap_state import RecapState
 from storage import MessageStore
 from textutils import md_to_tg_html, split_message, strip_markdown
@@ -52,6 +54,7 @@ llm: LLMClient
 tools: ToolRunner = ToolRunner("")
 KNOWLEDGE = ""
 BOT_USER: User | None = None
+recap_state: RecapState
 
 _last_request: dict[int, float] = {}
 _daily: dict[tuple[int, date], int] = {}
@@ -359,6 +362,50 @@ async def cmd_status(message: Message) -> None:
     )
 
 
+@router.message(Command("gametimes"))
+async def cmd_gametimes(message: Message) -> None:
+    if not chat_allowed(message):
+        return
+    week = recap_state.get_meta("current_week")
+    if not week:
+        await message.reply("Пока не знаю расписание текущей недели — дождись, пока бот его пришлёт.")
+        return
+    text = format_status_message(recap_state, week)
+    await message.reply(text, parse_mode="HTML", link_preview_options=LinkPreviewOptions(is_disabled=True))
+
+
+# ---------- реплаи на пост с расписанием: фиксируем время игры ----------
+
+async def is_schedule_reply(message: Message) -> bool:
+    return is_schedule_post(real_reply(message))
+
+
+@router.message(is_schedule_reply)
+async def on_schedule_reply(message: Message) -> None:
+    week = recap_state.get_meta("current_week")
+    if not week:
+        return
+    user = message.from_user
+    team = find_team_by_telegram(user.username if user else None, user.id if user else None)
+    if team is None:
+        await message.reply(
+            "Не смог понять, за какую команду ты отвечаешь — реплай на расписание пойми только от "
+            "владельцев команд из teams_map.py."
+        )
+        return
+    game = find_game_for_team(recap_state, week, team)
+    if game is None:
+        await message.reply("Не нашёл твою игру на этой неделе — странно, свяжись с комиссионерами.")
+        return
+    away, home = game
+
+    text = message_text(message)
+    dt = parse_game_time(text)
+    when_display = format_when(dt) if dt else html.escape(text[:100], quote=False)
+    save_gametime(recap_state, week, away, home, GameTimeRecord(when_display=when_display, by_user=team))
+    await message.reply(f"✅ Записал: {away} — {home}: {when_display}", parse_mode="HTML")
+
+
 # ---------- основной обработчик ----------
 
 @router.message(F.text | F.caption)
@@ -435,7 +482,7 @@ async def periodic_cleanup() -> None:
 
 
 def make_recap_handler(bot: Bot):
-    state = RecapState(settings.recap_state_path)
+    state = recap_state  # общий инстанс — нужен и обработчику реплаев на расписание
 
     async def handle_recap(raw_text: str) -> None:
         if is_transactions_message(raw_text):
@@ -489,6 +536,7 @@ def make_recap_handler(bot: Bot):
                     link_preview_options=LinkPreviewOptions(is_disabled=True),
                 )
                 state.mark_seen(schedule_key(week))
+                save_week_games(state, week, games)
 
                 old_pinned = state.get_meta("pinned_schedule_message_id")
                 if old_pinned:
@@ -519,7 +567,7 @@ def make_recap_handler(bot: Bot):
 
 
 async def main() -> None:
-    global store, llm, tools, KNOWLEDGE, BOT_USER
+    global store, llm, tools, KNOWLEDGE, BOT_USER, recap_state
     settings.validate()
 
     if settings.recap_reset_on_start and settings.recap_state_path.exists():
@@ -529,6 +577,7 @@ async def main() -> None:
             "иначе каждый рестарт будет заново анонсировать текущую неделю/игры.",
             settings.recap_state_path,
         )
+    recap_state = RecapState(settings.recap_state_path)
 
     KNOWLEDGE = load_knowledge(settings.knowledge_dir)
     store = MessageStore(settings.db_path)
