@@ -26,7 +26,8 @@ _COMPLETED_RE = re.compile(
     re.IGNORECASE,
 )
 _SCHEDULED_RE = re.compile(rf"^\s*(?P<away>{_ABBR})\s*@\s*(?P<home>{_ABBR})\s*$", re.IGNORECASE)
-_WEEK_RE = re.compile(r"week\s*(\d+)", re.IGNORECASE)
+# "Preseason Week 1" и просто "Week 1" — разные недели, у них не должен совпадать ключ дедупа.
+_WEEK_RE = re.compile(r"(pre[\s-]?season\s+)?week\s*(\d+)", re.IGNORECASE)
 
 # Отдельное авто-уведомление MTFranchiseBot по каждой сыгранной игре, например:
 #   Final scores
@@ -59,7 +60,7 @@ def parse_weekly_board(raw_text: str) -> tuple[str, list[GameEvent]]:
     for line in lines:
         wm = _WEEK_RE.search(line)
         if wm:
-            week = wm.group(1)
+            week = f"pre-{wm.group(2)}" if wm.group(1) else wm.group(2)
             break
 
     games: list[GameEvent] = []

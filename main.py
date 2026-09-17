@@ -476,11 +476,23 @@ def make_recap_handler(bot: Bot):
         if not any(g.is_completed for g in games):
             if state.is_new(schedule_key(week)):
                 schedule_text = format_schedule_message(week, games)
-                await bot.send_message(
+                sent = await bot.send_message(
                     settings.recap_chat_id, schedule_text, parse_mode="HTML",
                     link_preview_options=LinkPreviewOptions(is_disabled=True),
                 )
                 state.mark_seen(schedule_key(week))
+
+                old_pinned = state.get_meta("pinned_schedule_message_id")
+                if old_pinned:
+                    try:
+                        await bot.unpin_chat_message(settings.recap_chat_id, message_id=int(old_pinned))
+                    except TelegramBadRequest as e:
+                        log.warning("Не удалось открепить прошлое расписание (%s)", e)
+                try:
+                    await bot.pin_chat_message(settings.recap_chat_id, sent.message_id, disable_notification=True)
+                    state.set_meta("pinned_schedule_message_id", str(sent.message_id))
+                except TelegramBadRequest as e:
+                    log.warning("Не удалось закрепить расписание (%s) — у бота есть право 'Закреплять сообщения'?", e)
             return
 
         # Неделя уже в процессе (где-то есть счёт) — напоминаем, какие игры ещё не сыграны.

@@ -1,4 +1,5 @@
-"""Какие игры уже анонсированы в Telegram — чтобы не дублировать recap при повторной сводке."""
+"""Что уже анонсировано в Telegram (чтобы не дублировать) + мелкие произвольные значения
+(например, id закреплённого сообщения с расписанием)."""
 import json
 import logging
 from pathlib import Path
@@ -11,9 +12,15 @@ class RecapState:
         self.path = path
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._seen: set[str] = set()
+        self._meta: dict[str, str] = {}
         if self.path.exists():
             try:
-                self._seen = set(json.loads(self.path.read_text(encoding="utf-8")))
+                data = json.loads(self.path.read_text(encoding="utf-8"))
+                if isinstance(data, list):  # старый формат файла — просто список ключей
+                    self._seen = set(data)
+                elif isinstance(data, dict):
+                    self._seen = set(data.get("seen") or [])
+                    self._meta = dict(data.get("meta") or {})
             except Exception:
                 log.exception("Не удалось прочитать %s, начинаю с пустого состояния", self.path)
 
@@ -22,4 +29,15 @@ class RecapState:
 
     def mark_seen(self, key: str) -> None:
         self._seen.add(key)
-        self.path.write_text(json.dumps(sorted(self._seen), ensure_ascii=False, indent=2), encoding="utf-8")
+        self._save()
+
+    def get_meta(self, key: str) -> str | None:
+        return self._meta.get(key)
+
+    def set_meta(self, key: str, value: str) -> None:
+        self._meta[key] = value
+        self._save()
+
+    def _save(self) -> None:
+        data = {"seen": sorted(self._seen), "meta": self._meta}
+        self.path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
