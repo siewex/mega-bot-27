@@ -83,17 +83,18 @@ def is_final_score_message(raw_text: str) -> bool:
     return "final score" in raw_text.strip().lower()
 
 
-def parse_final_score_message(raw_text: str) -> GameEvent | None:
-    m = _FINAL_SCORE_RE.search(raw_text)
-    if not m:
-        return None
-    return GameEvent(
-        week="",
-        away=m.group("away").upper(),
-        home=m.group("home").upper(),
-        away_score=int(m.group("away_score")),
-        home_score=int(m.group("home_score")),
-    )
+def parse_final_score_messages(raw_text: str) -> list[GameEvent]:
+    """Final scores может прийти пачкой — несколько игр в одном уведомлении, по одной на строку."""
+    return [
+        GameEvent(
+            week="",
+            away=m.group("away").upper(),
+            home=m.group("home").upper(),
+            away_score=int(m.group("away_score")),
+            home_score=int(m.group("home_score")),
+        )
+        for m in _FINAL_SCORE_RE.finditer(raw_text)
+    ]
 
 
 def game_key(event: GameEvent) -> str:

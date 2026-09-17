@@ -30,7 +30,7 @@ from recap import (
     game_key,
     generate_blurb,
     is_final_score_message,
-    parse_final_score_message,
+    parse_final_score_messages,
     parse_weekly_board,
     remaining_key,
     schedule_key,
@@ -55,6 +55,7 @@ tools: ToolRunner = ToolRunner("")
 KNOWLEDGE = ""
 BOT_USER: User | None = None
 recap_state: RecapState
+recap_handler = None  # заполняется в main(); тот же обработчик, что и у Discord-relay
 
 _last_request: dict[int, float] = {}
 _daily: dict[tuple[int, date], int] = {}
@@ -341,6 +342,27 @@ async def cmd_testtransactions(message: Message) -> None:
     await message.answer(text, parse_mode="HTML", link_preview_options=LinkPreviewOptions(is_disabled=True))
 
 
+@router.message(Command("replay"))
+async def cmd_replay(message: Message) -> None:
+    """Админская утилита: скормить боту произвольный текст так, будто он только что
+    прилетел из Discord-канала (например, если relay пропустил часть игр из-за бага —
+    после фикса можно вручную вставить исходный текст уведомления и переобработать)."""
+    if not is_admin(message.from_user.id if message.from_user else None):
+        return
+    if recap_handler is None:
+        await message.reply("Discord-relay выключен, обрабатывать нечем.")
+        return
+    parts = message_text(message).split(maxsplit=1)
+    if len(parts) < 2:
+        await message.reply(
+            "Использование: /replay <текст уведомления, как он выглядит в Discord-канале>\n"
+            "Например: /replay Final scores\\nNO 14 @ DET 28\\nCLE 17 @ JAX 24"
+        )
+        return
+    await recap_handler(parts[1])
+    await message.reply("Обработано (новые игры/расписание уйдут в основной чат, уже показанные — пропустятся).")
+
+
 @router.message(Command("reload"))
 async def cmd_reload(message: Message) -> None:
     global KNOWLEDGE
@@ -504,11 +526,13 @@ def make_recap_handler(bot: Bot):
             return
 
         if is_final_score_message(raw_text):
-            event = parse_final_score_message(raw_text)
-            if event is None:
+            events = parse_final_score_messages(raw_text)
+            if not events:
                 log.warning("Похоже на Final scores, но не удалось разобрать счёт: %s", raw_text[:300])
                 return
-            if state.is_new(game_key(event)):
+            for event in events:
+                if not state.is_new(game_key(event)):
+                    continue
                 try:
                     blurb = await generate_blurb(llm, event)
                 except LLMError as e:
@@ -567,7 +591,7 @@ def make_recap_handler(bot: Bot):
 
 
 async def main() -> None:
-    global store, llm, tools, KNOWLEDGE, BOT_USER, recap_state
+    global store, llm, tools, KNOWLEDGE, BOT_USER, recap_state, recap_handler
     settings.validate()
 
     if settings.recap_reset_on_start and settings.recap_state_path.exists():
@@ -616,10 +640,11 @@ async def main() -> None:
     discord_client: RecapRelayClient | None = None
     discord_task: asyncio.Task | None = None
     if settings.recap_relay_enabled:
+        recap_handler = make_recap_handler(bot)
         discord_client = RecapRelayClient(
             channel_id=settings.discord_recap_channel_id,
             source_bot_id=settings.discord_source_bot_id,
-            on_recap=make_recap_handler(bot),
+            on_recap=recap_handler,
         )
         discord_task = asyncio.create_task(discord_client.start(settings.discord_bot_token))
         log.info("Discord-relay включён: канал %s -> Telegram чат %s", settings.discord_recap_channel_id, settings.recap_chat_id)
