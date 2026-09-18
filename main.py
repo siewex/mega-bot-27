@@ -15,7 +15,7 @@ from aiogram import Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandStart
-from aiogram.types import BotCommand, LinkPreviewOptions, Message, User
+from aiogram.types import BotCommand, BufferedInputFile, LinkPreviewOptions, Message, User
 from aiogram.utils.chat_action import ChatActionSender
 
 from config import settings
@@ -37,6 +37,7 @@ from recap import (
 )
 from game_schedule import find_team_by_telegram, find_game_for_team, format_status_message, format_when, parse_game_time, save_gametime, save_week_games, GameTimeRecord
 from recap_state import RecapState
+from scorecard import render_scorecard
 from storage import MessageStore
 from textutils import md_to_tg_html, split_message, strip_markdown
 from tools import ToolRunner
@@ -330,7 +331,11 @@ async def cmd_testrecap(message: Message) -> None:
         await message.answer(f"LLM не ответила: {e}")
         blurb = ""
     text = format_telegram_message(TEST_RECAP_EVENT, md_to_tg_html(blurb) if blurb else "")
-    await message.answer(text, parse_mode="HTML", link_preview_options=LinkPreviewOptions(is_disabled=True))
+    png = render_scorecard(
+        TEST_RECAP_EVENT.week, TEST_RECAP_EVENT.away, TEST_RECAP_EVENT.home,
+        TEST_RECAP_EVENT.away_score, TEST_RECAP_EVENT.home_score,
+    )
+    await message.answer_photo(BufferedInputFile(png, filename="scorecard.png"), caption=text, parse_mode="HTML")
 
 
 @router.message(Command("testtransactions"))
@@ -539,9 +544,11 @@ def make_recap_handler(bot: Bot):
                     log.error("LLM не сгенерировала recap (%s), отправляю без хайп-текста", e)
                     blurb = ""
                 text = format_telegram_message(event, md_to_tg_html(blurb) if blurb else "")
-                await bot.send_message(
-                    settings.recap_chat_id, text, parse_mode="HTML",
-                    link_preview_options=LinkPreviewOptions(is_disabled=True),
+                png = render_scorecard(event.week, event.away, event.home, event.away_score, event.home_score)
+                await bot.send_photo(
+                    settings.recap_chat_id,
+                    BufferedInputFile(png, filename="scorecard.png"),
+                    caption=text, parse_mode="HTML",
                 )
                 state.mark_seen(game_key(event))
             return
