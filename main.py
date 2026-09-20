@@ -18,6 +18,7 @@ from aiogram.filters import Command, CommandStart
 from aiogram.types import BotCommand, BufferedInputFile, LinkPreviewOptions, Message, User
 from aiogram.utils.chat_action import ChatActionSender
 
+from boxscore import boxscore_key, format_boxscore_message, generate_boxscore_blurb, is_boxscore_message, parse_boxscore
 from config import settings
 from discord_relay import RecapRelayClient
 from llm import LLMClient, LLMError
@@ -562,6 +563,32 @@ def make_recap_handler(bot: Bot):
                 )
                 for e in new_events:
                     state.mark_seen(e.key())
+            return
+
+        if is_boxscore_message(raw_text):
+            box = parse_boxscore(raw_text)
+            if box is None:
+                log.warning("Похоже на box score, но не удалось разобрать счёт: %s", raw_text[:300])
+                return
+            key = boxscore_key(box)
+            if state.is_new(key):
+                try:
+                    blurb = await generate_boxscore_blurb(llm, box)
+                except LLMError as e:
+                    log.error("LLM не сгенерировала recap (%s), отправляю без хайп-текста", e)
+                    blurb = ""
+                text = format_boxscore_message(box, md_to_tg_html(blurb) if blurb else "", include_stats=False)
+                png = render_scorecard(
+                    box.week, box.away, box.home, box.away_score, box.home_score,
+                    [(s.name, s.line) for s in box.away_stats],
+                    [(s.name, s.line) for s in box.home_stats],
+                )
+                await bot.send_photo(
+                    settings.recap_chat_id,
+                    BufferedInputFile(png, filename="scorecard.png"),
+                    caption=text, parse_mode="HTML",
+                )
+                state.mark_seen(key)
             return
 
         if is_final_score_message(raw_text):

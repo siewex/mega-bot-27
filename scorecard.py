@@ -1,7 +1,10 @@
 """Рендер PNG-карточки со счётом матча (в стиле спортивных скорбордов) — Pillow.
 
-Логотипы команд не рисуем (чужие товарные знаки), только фирменные цвета и названия —
-это публичная информация о брендах NFL, не проприетарные данные лиги.
+Сами логотипы команд сюда не встраиваю и не подтягиваю ниоткуда (чужие товарные знаки) —
+только фирменные цвета и названия, это публичная информация о брендах NFL, не проприетарная
+графика. Но если положить свой файл в logos/{ABBR}.png (сам, из личных источников) — карточка
+его подхватит и отрисует перед названием команды. Пока файла нет — используется нейтральная
+цветная заглушка (см. logos/generate_placeholders.py), никаких логотипов в ней тоже нет.
 """
 import io
 from functools import lru_cache
@@ -12,6 +15,8 @@ from PIL import Image, ImageDraw, ImageFont
 FONTS_DIR = Path(__file__).parent / "fonts"
 FONT_BOLD = FONTS_DIR / "PTSans-Bold.ttf"
 FONT_REGULAR = FONTS_DIR / "PTSans-Regular.ttf"
+LOGOS_DIR = Path(__file__).parent / "logos"
+LOGO_SIZE = 96
 
 # (основной цвет, акцентный цвет) — официальные цвета брендов команд NFL.
 TEAM_COLORS: dict[str, tuple[str, str]] = {
@@ -61,9 +66,12 @@ TEAM_NAMES: dict[str, str] = {
     "SEA": "SEAHAWKS", "SF": "49ERS", "LAR": "RAMS", "AZ": "CARDINALS", "ARI": "CARDINALS",
 }
 
-WIDTH, HEIGHT = 1000, 420
+WIDTH = 1000
 HEADER_H = 70
 ROW_H = 150
+FOOTER_H = 56
+STATS_HEADER_H = 40
+STATS_ROW_H = 62
 PAD = 28
 
 
@@ -73,15 +81,35 @@ def _font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont:
     return ImageFont.truetype(str(path), size)
 
 
-def _team_row(draw: ImageDraw.ImageDraw, y: int, abbr: str, score: int) -> None:
+@lru_cache(maxsize=32)
+def _load_logo(abbr: str) -> Image.Image | None:
+    path = LOGOS_DIR / f"{abbr}.png"
+    if not path.exists():
+        return None
+    try:
+        logo = Image.open(path).convert("RGBA")
+    except Exception:
+        return None
+    logo.thumbnail((LOGO_SIZE, LOGO_SIZE))
+    return logo
+
+
+def _team_row(img: Image.Image, draw: ImageDraw.ImageDraw, y: int, abbr: str, score: int) -> None:
     primary, accent = TEAM_COLORS.get(abbr, ("#2b2b2b", "#cccccc"))
     name = TEAM_NAMES.get(abbr, abbr)
 
     draw.rectangle([0, y, WIDTH, y + ROW_H], fill=primary)
     draw.rectangle([0, y, 14, y + ROW_H], fill=accent)
 
-    draw.text((PAD + 20, y + 22), abbr, font=_font(30), fill=accent)
-    draw.text((PAD + 20, y + 62), name, font=_font(56), fill="#FFFFFF")
+    text_x = PAD + 20
+    logo = _load_logo(abbr)
+    if logo is not None:
+        logo_y = y + (ROW_H - logo.height) // 2
+        img.paste(logo, (text_x, logo_y), logo)
+        text_x += LOGO_SIZE + 20
+
+    draw.text((text_x, y + 22), abbr, font=_font(30), fill=accent)
+    draw.text((text_x, y + 62), name, font=_font(56), fill="#FFFFFF")
 
     score_text = str(score)
     score_font = _font(90)
@@ -90,8 +118,25 @@ def _team_row(draw: ImageDraw.ImageDraw, y: int, abbr: str, score: int) -> None:
     draw.text((WIDTH - PAD - tw, y + (ROW_H - (bbox[3] - bbox[1])) // 2 - bbox[1]), score_text, font=score_font, fill="#FFFFFF")
 
 
-def render_scorecard(week: str, away: str, home: str, away_score: int, home_score: int) -> bytes:
-    img = Image.new("RGB", (WIDTH, HEIGHT), "#15181D")
+def _stats_column(draw: ImageDraw.ImageDraw, x: int, y: int, stats: list[tuple[str, str]]) -> None:
+    for i, (name, line) in enumerate(stats):
+        row_y = y + i * STATS_ROW_H
+        draw.text((x, row_y), name, font=_font(23), fill="#FFFFFF")
+        draw.text((x, row_y + 28), line, font=_font(19, bold=False), fill="#9AA0A6")
+
+
+def render_scorecard(
+    week: str, away: str, home: str, away_score: int, home_score: int,
+    away_stats: list[tuple[str, str]] | None = None,
+    home_stats: list[tuple[str, str]] | None = None,
+) -> bytes:
+    away_stats = away_stats or []
+    home_stats = home_stats or []
+    n_rows = max(len(away_stats), len(home_stats))
+    stats_h = (STATS_HEADER_H + n_rows * STATS_ROW_H + 10) if n_rows else 0
+    height = HEADER_H + 2 * ROW_H + stats_h + FOOTER_H
+
+    img = Image.new("RGB", (WIDTH, height), "#15181D")
     draw = ImageDraw.Draw(img)
 
     draw.rectangle([0, 0, WIDTH, HEADER_H], fill="#1E2229")
@@ -110,12 +155,20 @@ def render_scorecard(week: str, away: str, home: str, away_score: int, home_scor
     )
     draw.text((bx1 + badge_pad_x, 14 + badge_pad_y - bbox[1]), badge_text, font=badge_font, fill="#101820")
 
-    _team_row(draw, HEADER_H, away, away_score)
-    _team_row(draw, HEADER_H + ROW_H, home, home_score)
+    _team_row(img, draw, HEADER_H, away, away_score)
+    _team_row(img, draw, HEADER_H + ROW_H, home, home_score)
 
-    footer_y = HEADER_H + 2 * ROW_H
-    draw.rectangle([0, footer_y, WIDTH, HEIGHT], fill="#1E2229")
-    draw.text((PAD, footer_y + (HEIGHT - footer_y - 22) // 2), "MEGA League · Madden 27", font=_font(22), fill="#8A8F98")
+    y = HEADER_H + 2 * ROW_H
+    if n_rows:
+        draw.text((PAD, y + 10), "ЛУЧШИЕ ИГРОКИ", font=_font(18), fill="#8A8F98")
+        y += STATS_HEADER_H
+        col_w = (WIDTH - 2 * PAD) // 2
+        _stats_column(draw, PAD, y, away_stats)
+        _stats_column(draw, PAD + col_w, y, home_stats)
+        y += n_rows * STATS_ROW_H + 10
+
+    draw.rectangle([0, y, WIDTH, height], fill="#1E2229")
+    draw.text((PAD, y + (FOOTER_H - 22) // 2), "MEGA League · Madden 27", font=_font(22), fill="#8A8F98")
 
     buf = io.BytesIO()
     img.save(buf, format="PNG")
