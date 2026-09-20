@@ -35,7 +35,7 @@ from recap import (
     remaining_key,
     schedule_key,
 )
-from game_schedule import find_team_by_telegram, find_game_for_team, format_status_message, format_when, parse_game_time, save_gametime, save_week_games, GameTimeRecord
+from game_schedule import detect_force, find_team_by_telegram, find_game_for_team, format_status_message, format_when, parse_game_time, save_gametime, save_week_games, GameTimeRecord
 from recap_state import RecapState
 from scorecard import render_scorecard
 from storage import MessageStore
@@ -103,6 +103,20 @@ def is_schedule_post(message: Message | None) -> bool:
     return text.startswith("Расписание · Неделя")
 
 
+def is_gametime_confirmation(message: Message | None) -> bool:
+    """Собственное подтверждение бота ("✅ Записал..."/"⚠️ Записал...") — реплай на него
+    тоже должен уходить в трекер времени игр, а не в LLM: так можно поправить время,
+    ответив на последнее сообщение в цепочке, а не только на исходное расписание."""
+    if message is None:
+        return False
+    text = message.text or message.caption or ""
+    return text.startswith("✅ Записал") or text.startswith("⚠️ Записал")
+
+
+def is_gametime_related_post(message: Message | None) -> bool:
+    return is_schedule_post(message) or is_gametime_confirmation(message)
+
+
 def mentions_bot(message: Message) -> bool:
     if BOT_USER is None:
         return False
@@ -149,7 +163,7 @@ def should_respond(message: Message) -> bool:
     if message.chat.type == "private":
         return True
     reply = real_reply(message)
-    if reply and BOT_USER and reply.from_user and reply.from_user.id == BOT_USER.id and not is_schedule_post(reply):
+    if reply and BOT_USER and reply.from_user and reply.from_user.id == BOT_USER.id and not is_gametime_related_post(reply):
         return True
     if mentions_bot(message):
         return True
@@ -404,7 +418,7 @@ async def cmd_gametimes(message: Message) -> None:
 # ---------- реплаи на пост с расписанием: фиксируем время игры ----------
 
 async def is_schedule_reply(message: Message) -> bool:
-    return is_schedule_post(real_reply(message))
+    return is_gametime_related_post(real_reply(message))
 
 
 @router.message(is_schedule_reply)
@@ -413,23 +427,43 @@ async def on_schedule_reply(message: Message) -> None:
     if not week:
         return
     user = message.from_user
-    team = find_team_by_telegram(user.username if user else None, user.id if user else None)
-    if team is None:
+    text = message_text(message)
+    own_team = find_team_by_telegram(user.username if user else None, user.id if user else None)
+
+    forced_team = detect_force(text)
+    if forced_team is not None or (own_team and "форс" in text.lower()):
+        # "Форс Теннесси" от соперника — команду берём из текста.
+        # Просто "форс" от самого владельца — форсуют его текущего соперника по расписанию.
+        target_team = forced_team or own_team
+        game = find_game_for_team(recap_state, week, target_team)
+        if game is None:
+            await message.reply("Не нашёл эту игру на этой неделе — свяжись с комиссионерами.")
+            return
+        away, home = game
+        if forced_team is None:
+            # own_team форсит — значит форс объявлен против его соперника по игре
+            opponent = home if own_team == away else away
+        else:
+            opponent = forced_team
+        save_gametime(recap_state, week, away, home, GameTimeRecord(when_display="", by_user=own_team or "", forced_against=opponent))
+        await message.reply(f"⚠️ Записал: {away} — {home}: форс против {opponent}", parse_mode="HTML")
+        return
+
+    if own_team is None:
         await message.reply(
-            "Не смог понять, за какую команду ты отвечаешь — реплай на расписание пойми только от "
+            "Не смог понять, за какую команду ты отвечаешь — реплай на расписание пойму только от "
             "владельцев команд из teams_map.py."
         )
         return
-    game = find_game_for_team(recap_state, week, team)
+    game = find_game_for_team(recap_state, week, own_team)
     if game is None:
         await message.reply("Не нашёл твою игру на этой неделе — странно, свяжись с комиссионерами.")
         return
     away, home = game
 
-    text = message_text(message)
     dt = parse_game_time(text)
     when_display = format_when(dt) if dt else html.escape(text[:100], quote=False)
-    save_gametime(recap_state, week, away, home, GameTimeRecord(when_display=when_display, by_user=team))
+    save_gametime(recap_state, week, away, home, GameTimeRecord(when_display=when_display, by_user=own_team))
     await message.reply(f"✅ Записал: {away} — {home}: {when_display}", parse_mode="HTML")
 
 
