@@ -83,6 +83,25 @@ def _strip_leading_emoji(line: str) -> str:
     return line.strip()
 
 
+# Копипаст из Discord иногда теряет переносы строк внутри блока статы, и все 4 игрока
+# команды слипаются в одну строку без разделителей ("Baker Mayfield 21/36, 250 yds, 2 TD
+# Kenny Gainwell 13 carries, 60 yds ..."). Поэтому вместо жёсткой пары "строка-имя +
+# строка-стата" достаём все пары (игрок, стата) из блока целиком одним паттерном —
+# работает и когда строки разделены переносами, и когда слиплись в одну.
+_PLAYER_STAT_RE = re.compile(
+    r"(?P<name>[A-Z][\w'.-]*(?:\s+[A-Z][\w'.-]*){0,3}?)\s+"
+    r"(?P<stat>\d[^A-Z]*(?:[A-Z]{1,3}(?![a-z])[^A-Z]*)*)"
+)
+
+
+def _extract_player_stats(block: str) -> list[PlayerStat]:
+    joined = " ".join(ln.strip() for ln in block.splitlines() if ln.strip())
+    return [
+        PlayerStat(category=_guess_category(m.group("stat")), name=m.group("name").strip(), line=m.group("stat").strip())
+        for m in _PLAYER_STAT_RE.finditer(joined)
+    ]
+
+
 def parse_boxscore(raw_text: str) -> BoxScore | None:
     m = _HEADER_RE.search(raw_text)
     if not m:
@@ -99,24 +118,21 @@ def parse_boxscore(raw_text: str) -> BoxScore | None:
     tail = raw_text[idx + len("box score"):]
     lines = [ln.strip() for ln in tail.splitlines() if ln.strip()]
 
-    current: list[PlayerStat] | None = None
-    i = 0
-    while i < len(lines):
-        cleaned = _strip_leading_emoji(lines[i]).upper()
-        if cleaned == away:
-            current = box.away_stats
-            i += 1
-            continue
-        if cleaned == home:
-            current = box.home_stats
-            i += 1
-            continue
-        if current is not None and i + 1 < len(lines):
-            name, stat_line = lines[i], lines[i + 1]
-            current.append(PlayerStat(category=_guess_category(stat_line), name=name, line=stat_line))
-            i += 2
-            continue
-        i += 1
+    away_idx = home_idx = None
+    for i, line in enumerate(lines):
+        cleaned = _strip_leading_emoji(line).upper()
+        if away_idx is None and cleaned == away:
+            away_idx = i
+        elif home_idx is None and cleaned == home:
+            home_idx = i
+
+    if away_idx is not None:
+        end = home_idx if home_idx is not None and home_idx > away_idx else len(lines)
+        box.away_stats = _extract_player_stats("\n".join(lines[away_idx + 1 : end]))
+    if home_idx is not None:
+        box.home_stats = _extract_player_stats("\n".join(lines[home_idx + 1 :]))
+
+    return box
 
     return box
 
