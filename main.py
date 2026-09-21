@@ -18,7 +18,7 @@ from aiogram.filters import Command, CommandStart
 from aiogram.types import BotCommand, BufferedInputFile, LinkPreviewOptions, Message, User
 from aiogram.utils.chat_action import ChatActionSender
 
-from boxscore import boxscore_key, format_boxscore_message, generate_boxscore_blurb, is_boxscore_message, parse_boxscore
+from boxscore import boxscore_key, format_boxscore_message, generate_boxscore_blurb, is_boxscore_message, parse_boxscore_messages
 from config import settings
 from discord_relay import RecapRelayClient
 from llm import LLMClient, LLMError
@@ -567,18 +567,20 @@ def make_recap_handler(bot: Bot):
 
         if is_boxscore_message(raw_text):
             log.info("RAW box score (%s символов, без обрезки): %r", len(raw_text), raw_text)
-            box = parse_boxscore(raw_text)
-            if box is None:
+            boxes = parse_boxscore_messages(raw_text)
+            if not boxes:
                 log.warning("Похоже на box score, но не удалось разобрать счёт: %s", raw_text[:300])
                 return
-            if not box.away_stats and not box.home_stats:
-                log.warning(
-                    "Box score распознан (%s %s—%s %s), но статы игроков не найдены — "
-                    "либо MTFranchiseBot не прислал их текстом в этот раз, либо изменился формат.",
-                    box.away, box.away_score, box.home_score, box.home,
-                )
-            key = boxscore_key(box)
-            if state.is_new(key):
+            for box in boxes:
+                if not box.away_stats and not box.home_stats:
+                    log.warning(
+                        "Box score распознан (%s %s—%s %s), но статы игроков не найдены — "
+                        "либо MTFranchiseBot не прислал их текстом в этот раз, либо изменился формат.",
+                        box.away, box.away_score, box.home_score, box.home,
+                    )
+                key = boxscore_key(box)
+                if not state.is_new(key):
+                    continue
                 try:
                     blurb = await generate_boxscore_blurb(llm, box)
                 except LLMError as e:

@@ -104,20 +104,19 @@ def _extract_player_stats(block: str) -> list[PlayerStat]:
     ]
 
 
-def parse_boxscore(raw_text: str) -> BoxScore | None:
-    m = _HEADER_RE.search(raw_text)
-    if not m:
-        return None
-    away, home = m.group("away").upper(), m.group("home").upper()
+def _parse_one_boxscore(header: re.Match, segment: str) -> BoxScore:
+    """segment — текст СТРОГО между этим заголовком и следующим (или концом сообщения),
+    чтобы при нескольких играх в одном уведомлении статы одной не утекали в другую."""
+    away, home = header.group("away").upper(), header.group("home").upper()
     box = BoxScore(
-        week=m.group("week"), away=away, home=home,
-        away_score=int(m.group("away_score")), home_score=int(m.group("home_score")),
+        week=header.group("week"), away=away, home=home,
+        away_score=int(header.group("away_score")), home_score=int(header.group("home_score")),
     )
 
-    idx = raw_text.lower().find("box score")
+    idx = segment.lower().find("box score")
     if idx == -1:
         return box
-    tail = raw_text[idx + len("box score"):]
+    tail = segment[idx + len("box score"):]
     lines = [ln.strip() for ln in tail.splitlines() if ln.strip()]
 
     away_idx = home_idx = None
@@ -136,7 +135,25 @@ def parse_boxscore(raw_text: str) -> BoxScore | None:
 
     return box
 
-    return box
+
+def parse_boxscore_messages(raw_text: str) -> list[BoxScore]:
+    """MTFranchiseBot иногда пакует несколько игр в одно уведомление (как раньше было
+    с Final scores) — находим ВСЕ заголовки и режем текст на непересекающиеся куски по
+    ним, чтобы статы одной игры не утекали в соседнюю."""
+    headers = list(_HEADER_RE.finditer(raw_text))
+    boxes = []
+    for i, header in enumerate(headers):
+        end = headers[i + 1].start() if i + 1 < len(headers) else len(raw_text)
+        segment = raw_text[header.end() : end]
+        boxes.append(_parse_one_boxscore(header, segment))
+    return boxes
+
+
+def parse_boxscore(raw_text: str) -> BoxScore | None:
+    """Обратная совместимость: только первая игра из уведомления. Для пачки игр
+    используй parse_boxscore_messages."""
+    boxes = parse_boxscore_messages(raw_text)
+    return boxes[0] if boxes else None
 
 
 BOXSCORE_SYSTEM_PROMPT = (
