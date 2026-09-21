@@ -95,7 +95,9 @@ _PLAYER_STAT_RE = re.compile(
 
 
 def _extract_player_stats(block: str) -> list[PlayerStat]:
-    joined = " ".join(ln.strip() for ln in block.splitlines() if ln.strip())
+    # MTFranchiseBot иногда оборачивает имена в markdown **bold** — звёздочки разрывают
+    # связку "имя -> пробел -> цифра статы" в регэкспе, поэтому просто убираем их.
+    joined = " ".join(ln.strip() for ln in block.splitlines() if ln.strip()).replace("*", "")
     return [
         PlayerStat(category=_guess_category(m.group("stat")), name=m.group("name").strip(), line=m.group("stat").strip())
         for m in _PLAYER_STAT_RE.finditer(joined)
