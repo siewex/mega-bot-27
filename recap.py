@@ -29,6 +29,15 @@ _SCHEDULED_RE = re.compile(rf"^\s*(?P<away>{_ABBR})\s*@\s*(?P<home>{_ABBR})\s*$"
 # "Preseason Week 1" и просто "Week 1" — разные недели, у них не должен совпадать ключ дедупа.
 _WEEK_RE = re.compile(r"(pre[\s-]?season\s+)?week\s*(\d+)", re.IGNORECASE)
 
+# Отдельная команда MTFranchiseBot, отфильтрованная ТОЛЬКО под несыгранные игры:
+#   Week 2: not yet played
+#   DET @ BUF
+#   ...
+# В отличие от общей сводки `Scores: Week N`, тут в принципе никогда не будет сыгранных
+# игр — поэтому её нельзя определять по "есть ли счёт в списке", нужен отдельный триггер.
+def is_not_yet_played_message(raw_text: str) -> bool:
+    return "not yet played" in raw_text.lower()
+
 # Отдельное авто-уведомление MTFranchiseBot по каждой сыгранной игре, например:
 #   Final scores
 #   SF 0 @ LAC 31

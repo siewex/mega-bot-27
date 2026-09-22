@@ -31,6 +31,7 @@ from recap import (
     game_key,
     generate_blurb,
     is_final_score_message,
+    is_not_yet_played_message,
     parse_final_score_messages,
     parse_weekly_board,
     remaining_key,
@@ -621,6 +622,23 @@ def make_recap_handler(bot: Bot):
                     caption=text, parse_mode="HTML",
                 )
                 state.mark_seen(game_key(event))
+            return
+
+        if is_not_yet_played_message(raw_text):
+            # "Week N: not yet played" — отдельная команда, отфильтрованная только под
+            # несыгранные игры. Тут никогда не будет счёта, поэтому это всегда
+            # напоминание "кто ещё не сыграл", а не расписание.
+            week, games = parse_weekly_board(raw_text)
+            if week == "?" or not games:
+                return
+            rkey = remaining_key(week, games)
+            if state.is_new(rkey):
+                text = format_remaining_message(week, games)
+                await bot.send_message(
+                    settings.recap_chat_id, text, parse_mode="HTML",
+                    link_preview_options=LinkPreviewOptions(is_disabled=True),
+                )
+                state.mark_seen(rkey)
             return
 
         # Сводка `scores` используется для расписания — recap по сыгранным играм
