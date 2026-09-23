@@ -631,6 +631,7 @@ def make_recap_handler(bot: Bot):
                 link_preview_options=LinkPreviewOptions(is_disabled=True),
             )
             state.mark_seen(schedule_key(week))
+            state.mark_seen(remaining_key(week, games))
             save_week_games(state, week, games)
 
             old_pinned = state.get_meta("pinned_schedule_message_id")
