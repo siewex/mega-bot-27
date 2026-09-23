@@ -34,6 +34,8 @@ _HEADER_RE = re.compile(
     re.IGNORECASE,
 )
 
+_BOXSCORE_URL_RE = re.compile(r"\[Box score\]\((?P<url>[^)]+)\)", re.IGNORECASE)
+
 CATEGORY_LABELS = {"pass": "🎯 Пас", "rush": "🏃 Ран", "rec": "🙌 Приём", "def": "🛡 Защита"}
 
 
@@ -53,6 +55,7 @@ class BoxScore:
     home_score: int
     away_stats: list[PlayerStat] = field(default_factory=list)
     home_stats: list[PlayerStat] = field(default_factory=list)
+    box_score_url: str | None = None
 
 
 def is_boxscore_message(raw_text: str) -> bool:
@@ -108,9 +111,11 @@ def _parse_one_boxscore(header: re.Match, segment: str) -> BoxScore:
     """segment — текст СТРОГО между этим заголовком и следующим (или концом сообщения),
     чтобы при нескольких играх в одном уведомлении статы одной не утекали в другую."""
     away, home = header.group("away").upper(), header.group("home").upper()
+    url_m = _BOXSCORE_URL_RE.search(segment)
     box = BoxScore(
         week=header.group("week"), away=away, home=home,
         away_score=int(header.group("away_score")), home_score=int(header.group("home_score")),
+        box_score_url=url_m.group("url") if url_m else None,
     )
 
     idx = segment.lower().find("box score")
@@ -157,10 +162,13 @@ def parse_boxscore(raw_text: str) -> BoxScore | None:
 
 
 BOXSCORE_SYSTEM_PROMPT = (
-    "Ты спортивный комментатор фэнтези-лиги Madden NFL. По статистике матча пиши "
-    "короткий (1-2 предложения) эмоциональный recap на русском языке, упоминая конкретных "
-    "игроков и их реальные цифры из статистики. Никогда не выдумывай цифры и события, "
-    "которых нет в переданных данных."
+    "Ты спортивный комментатор фэнтези-лиги Madden NFL. По статистике матча пиши короткий "
+    "(1-2 предложения) эмоциональный recap ПОЛНОСТЬЮ на русском языке — никаких английских "
+    "слов в самом тексте (запрещены даже 'вау' и подобные вставки). Имена игроков и названия "
+    "команд оставляй как есть латиницей, но заключай их в кавычки-ёлочки, например «Taylen "
+    "Green» или «Cleveland». Не повторяй итоговый счёт матча в тексте — он уже показан отдельной "
+    "строкой перед твоим текстом. Никогда не выдумывай цифры и события, которых нет в переданных "
+    "данных."
 )
 
 
@@ -201,4 +209,6 @@ def format_boxscore_message(box: BoxScore, blurb_html: str, include_stats: bool 
     if include_stats and (box.away_stats or box.home_stats):
         lines += ["", f"<b>{box.away}</b>", *_format_team_stats(box.away_stats)]
         lines += ["", f"<b>{box.home}</b>", *_format_team_stats(box.home_stats)]
+    if box.box_score_url:
+        lines += ["", f'<a href="{box.box_score_url}">Box Score</a>']
     return "\n".join(lines)

@@ -42,7 +42,7 @@ _TYPE_LABELS = {
     "POSITION_CHANGE": "Смена позиции", "TEAM CHANGES": "Изменение состава",
     "TRADE": "Трейд", "TRADES": "Трейд",
     "IR": "Список травмированных",
-    "PRACTICE_SQUAD": "Практис-сквад",
+    "PRACTICE_SQUAD": "Практис-сквад", "PRACTICE SQUAD MOVES": "Практис-сквад",
 }
 
 
@@ -65,7 +65,9 @@ def parse_transactions(raw_text: str) -> list[TransactionEvent]:
     current_label: str | None = None
 
     for raw_line in raw_text.splitlines():
-        line = raw_line.strip()
+        # MTFranchiseBot иногда оборачивает заголовки категорий в markdown **bold**
+        # ("**Releases** · 1") — звёздочки мешают регэкспам, просто убираем их.
+        line = raw_line.strip().replace("*", "")
         if not line or line.lower().startswith("data as of") or line.lower() == "transactions":
             continue
 
