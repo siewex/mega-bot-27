@@ -37,7 +37,7 @@ from recap import (
     remaining_key,
     schedule_key,
 )
-from game_schedule import detect_force, find_team_by_telegram, find_game_for_team, format_status_message, format_when, parse_game_time, save_gametime, save_week_games, GameTimeRecord
+from game_schedule import detect_force, find_team_by_telegram, find_game_for_team, format_status_message, save_gametime, save_week_games, GameTimeRecord
 from recap_state import RecapState
 from scorecard import render_scorecard
 from storage import MessageStore
@@ -463,8 +463,8 @@ async def on_schedule_reply(message: Message) -> None:
         return
     away, home = game
 
-    dt = parse_game_time(text)
-    when_display = format_when(dt) if dt else html.escape(text[:100], quote=False)
+    # Никакого разбора даты/времени — записываем ровно то, что менеджер написал сам.
+    when_display = html.escape(text[:200], quote=False) if text else "(без текста)"
     save_gametime(recap_state, week, away, home, GameTimeRecord(when_display=when_display, by_user=own_team))
     await message.reply(f"✅ Записал: {away} — {home}: {when_display}", parse_mode="HTML")
 
