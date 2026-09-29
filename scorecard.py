@@ -85,11 +85,18 @@ def _font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont:
     return ImageFont.truetype(str(FONT_BOLD if bold else FONT_REGULAR), size)
 
 
-@lru_cache(maxsize=64)
 def _logo(abbr: str) -> Image.Image | None:
+    """Логотип перечитывается, если файл добавили/заменили — без перезапуска бота."""
     path = LOGOS_DIR / f"{abbr}.png"
-    if not path.exists():
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
         return None
+    return _load_logo(str(path), mtime)
+
+
+@lru_cache(maxsize=64)
+def _load_logo(path: str, mtime: float) -> Image.Image | None:
     try:
         im = Image.open(path).convert("RGBA")
     except Exception:
@@ -229,10 +236,12 @@ def render_scorecard(
     d.rounded_rectangle([bx, y0 + 18, x1 - 32, y0 + 36 + bh], radius=16, fill="#FFB612")
     d.text((bx + 18, y0 + 27 - bo), "FINAL", font=bf, fill="#101820")
 
-    away_won = away_score > home_score
+    # При ничьей обе стороны яркие — приглушаем только проигравшего.
+    away_won = away_score >= home_score
+    home_won = home_score >= away_score
     by = y0 + HDR
     _team_band(img, x0, by, "L", away, away_score, away_won)
-    _team_band(img, x0, by, "R", home, home_score, not away_won)
+    _team_band(img, x0, by, "R", home, home_score, home_won)
     _layer_rect(img, [x0 + W // 2 - 1, by, x0 + W // 2 + 1, by + BAND], (255, 255, 255, 60))
 
     sy = by + BAND
@@ -246,7 +255,7 @@ def render_scorecard(
         lf = _font(19)
         lw, lh, lo = _tw(d, label, lf)
         d.text((x0 + W // 2 - lw // 2, y + ROW // 2 - lh // 2 - lo), label, font=lf, fill="#E6E8EB")
-        for side, stat, won in (("L", away_c.get(cat), away_won), ("R", home_c.get(cat), not away_won)):
+        for side, stat, won in (("L", away_c.get(cat), away_won), ("R", home_c.get(cat), home_won)):
             if not stat:
                 continue
             name, line = stat
