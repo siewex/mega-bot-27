@@ -31,6 +31,22 @@ class RecapState:
         self._seen.add(key)
         self._save()
 
+    def claim(self, key: str) -> bool:
+        """Проверить и сразу занять ключ. Занимать нужно ДО любых await: одно и то же
+        сообщение Discord может прийти дважды подряд (MESSAGE_CREATE и MESSAGE_UPDATE,
+        когда Discord дорисовывает превью ссылки), и второй обработчик иначе успеет
+        пройти проверку, пока первый ждёт LLM."""
+        if key in self._seen:
+            return False
+        self.mark_seen(key)
+        return True
+
+    def forget(self, key: str) -> None:
+        """Откатить claim, если отправить не получилось — чтобы следующая попытка прошла."""
+        if key in self._seen:
+            self._seen.discard(key)
+            self._save()
+
     def get_meta(self, key: str) -> str | None:
         return self._meta.get(key)
 

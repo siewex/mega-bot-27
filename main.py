@@ -576,15 +576,18 @@ def make_recap_handler(bot: Bot):
             if not events:
                 log.warning("Сообщение похоже на Transactions, но ни одной строки не разобралось: %s", raw_text[:300])
                 return
-            new_events = [e for e in events if state.is_new(e.key())]
+            new_events = [e for e in events if state.claim(e.key())]
             if new_events:
                 text = format_transactions_message(new_events)
-                await bot.send_message(
-                    settings.transactions_chat_id, text, parse_mode="HTML",
-                    link_preview_options=LinkPreviewOptions(is_disabled=True),
-                )
-                for e in new_events:
-                    state.mark_seen(e.key())
+                try:
+                    await bot.send_message(
+                        settings.transactions_chat_id, text, parse_mode="HTML",
+                        link_preview_options=LinkPreviewOptions(is_disabled=True),
+                    )
+                except Exception:
+                    for e in new_events:
+                        state.forget(e.key())
+                    raise
             return
 
         if is_boxscore_message(raw_text):
@@ -601,25 +604,28 @@ def make_recap_handler(bot: Bot):
                         box.away, box.away_score, box.home_score, box.home,
                     )
                 key = boxscore_key(box)
-                if not state.is_new(key):
+                if not state.claim(key):
                     continue
                 try:
-                    blurb = await generate_boxscore_blurb(llm, box)
-                except LLMError as e:
-                    log.error("LLM не сгенерировала recap (%s), отправляю без хайп-текста", e)
-                    blurb = ""
-                text = format_boxscore_message(box, md_to_tg_html(blurb) if blurb else "", include_stats=False)
-                png = render_scorecard(
-                    box.week, box.away, box.home, box.away_score, box.home_score,
-                    [(s.name, s.line) for s in box.away_stats],
-                    [(s.name, s.line) for s in box.home_stats],
-                )
-                await bot.send_photo(
-                    settings.recap_chat_id,
-                    BufferedInputFile(png, filename="scorecard.png"),
-                    caption=text, parse_mode="HTML",
-                )
-                state.mark_seen(key)
+                    try:
+                        blurb = await generate_boxscore_blurb(llm, box)
+                    except LLMError as e:
+                        log.error("LLM не сгенерировала recap (%s), отправляю без хайп-текста", e)
+                        blurb = ""
+                    text = format_boxscore_message(box, md_to_tg_html(blurb) if blurb else "", include_stats=False)
+                    png = render_scorecard(
+                        box.week, box.away, box.home, box.away_score, box.home_score,
+                        [(s.name, s.line) for s in box.away_stats],
+                        [(s.name, s.line) for s in box.home_stats],
+                    )
+                    await bot.send_photo(
+                        settings.recap_chat_id,
+                        BufferedInputFile(png, filename="scorecard.png"),
+                        caption=text, parse_mode="HTML",
+                    )
+                except Exception:
+                    state.forget(key)
+                    raise
             return
 
         if is_final_score_message(raw_text):
@@ -629,12 +635,16 @@ def make_recap_handler(bot: Bot):
             return
 
         async def send_schedule(week: str, games) -> None:
+            """Вызывать только после state.claim(schedule_key(week))."""
             schedule_text = format_schedule_message(week, games)
-            sent = await bot.send_message(
-                settings.recap_chat_id, schedule_text, parse_mode="HTML",
-                link_preview_options=LinkPreviewOptions(is_disabled=True),
-            )
-            state.mark_seen(schedule_key(week))
+            try:
+                sent = await bot.send_message(
+                    settings.recap_chat_id, schedule_text, parse_mode="HTML",
+                    link_preview_options=LinkPreviewOptions(is_disabled=True),
+                )
+            except Exception:
+                state.forget(schedule_key(week))
+                raise
             state.mark_seen(remaining_key(week, games))
             save_week_games(state, week, games)
 
@@ -650,6 +660,19 @@ def make_recap_handler(bot: Bot):
             except TelegramBadRequest as e:
                 log.warning("Не удалось закрепить расписание (%s) — у бота есть право 'Закреплять сообщения'?", e)
 
+        async def send_remaining(week: str, unplayed) -> None:
+            rkey = remaining_key(week, unplayed)
+            if not state.claim(rkey):
+                return
+            try:
+                await bot.send_message(
+                    settings.recap_chat_id, format_remaining_message(week, unplayed), parse_mode="HTML",
+                    link_preview_options=LinkPreviewOptions(is_disabled=True),
+                )
+            except Exception:
+                state.forget(rkey)
+                raise
+
         if is_not_yet_played_message(raw_text):
             # "Week N: not yet played" — отдельная команда, отфильтрованная только под
             # несыгранные игры. Если расписание для этой недели ещё не отправлялось —
@@ -658,17 +681,10 @@ def make_recap_handler(bot: Bot):
             week, games = parse_weekly_board(raw_text)
             if week == "?" or not games:
                 return
-            if state.is_new(schedule_key(week)):
+            if state.claim(schedule_key(week)):
                 await send_schedule(week, games)
                 return
-            rkey = remaining_key(week, games)
-            if state.is_new(rkey):
-                text = format_remaining_message(week, games)
-                await bot.send_message(
-                    settings.recap_chat_id, text, parse_mode="HTML",
-                    link_preview_options=LinkPreviewOptions(is_disabled=True),
-                )
-                state.mark_seen(rkey)
+            await send_remaining(week, games)
             return
 
         # Сводка `scores` используется для расписания — recap по сыгранным играм
@@ -678,7 +694,7 @@ def make_recap_handler(bot: Bot):
             return
 
         if not any(g.is_completed for g in games):
-            if state.is_new(schedule_key(week)):
+            if state.claim(schedule_key(week)):
                 await send_schedule(week, games)
             return
 
@@ -686,14 +702,7 @@ def make_recap_handler(bot: Bot):
         # Срабатывает заново только когда сам набор оставшихся игр меняется.
         unplayed = [g for g in games if not g.is_completed]
         if unplayed:
-            rkey = remaining_key(week, unplayed)
-            if state.is_new(rkey):
-                text = format_remaining_message(week, unplayed)
-                await bot.send_message(
-                    settings.recap_chat_id, text, parse_mode="HTML",
-                    link_preview_options=LinkPreviewOptions(is_disabled=True),
-                )
-                state.mark_seen(rkey)
+            await send_remaining(week, unplayed)
     return handle_recap
 
 
