@@ -18,7 +18,15 @@ from aiogram.filters import Command, CommandStart
 from aiogram.types import BotCommand, BufferedInputFile, LinkPreviewOptions, Message, User
 from aiogram.utils.chat_action import ChatActionSender
 
-from boxscore import boxscore_key, format_boxscore_message, generate_boxscore_blurb, is_boxscore_message, parse_boxscore_messages
+from boxscore import (
+    BoxScore,
+    PlayerStat,
+    boxscore_key,
+    format_boxscore_message,
+    generate_boxscore_blurb,
+    is_boxscore_message,
+    parse_boxscore_messages,
+)
 from config import settings
 from discord_relay import RecapRelayClient
 from llm import LLMClient, LLMError
@@ -27,12 +35,8 @@ from recap import (
     GameEvent,
     format_remaining_message,
     format_schedule_message,
-    format_telegram_message,
-    game_key,
-    generate_blurb,
     is_final_score_message,
     is_not_yet_played_message,
-    parse_final_score_messages,
     parse_weekly_board,
     remaining_key,
     schedule_key,
@@ -320,7 +324,22 @@ TEST_SCHEDULE_GAMES = [
     GameEvent("ТЕСТ", "KC", "BUF", None, None),
     GameEvent("ТЕСТ", "PIT", "CIN", None, None),
 ]
-TEST_RECAP_EVENT = GameEvent(week="", away="MIN", home="NYG", away_score=17, home_score=38)
+TEST_BOXSCORE = BoxScore(
+    week="3", away="CAR", home="CLE", away_score=20, home_score=27,
+    away_stats=[
+        PlayerStat("pass", "Bryce Young", "17/27, 215 yds, 2 TD, 3 INT"),
+        PlayerStat("rush", "Chuba Hubbard", "10 carries, 29 yds"),
+        PlayerStat("rec", "Jalen Coker", "6 rec, 72 yds, 1 TD"),
+        PlayerStat("def", "Tre'von Moehrig", "4 tkl, 1 FF, 1 PD"),
+    ],
+    home_stats=[
+        PlayerStat("pass", "Taylen Green", "16/25, 152 yds, 3 TD"),
+        PlayerStat("rush", "Quinshon Judkins", "14 carries, 109 yds"),
+        PlayerStat("rec", "Quinshon Judkins", "4 rec, 37 yds"),
+        PlayerStat("def", "Grant Delpit", "2 tkl, 2 INT, 1 FF"),
+    ],
+    box_score_url="https://madden.tools/franchise/leagues/00a9f6ec-c3f8-4c0b-b45b-c133075be445",
+)
 TEST_TRANSACTIONS = [
     TransactionEvent(team="JAX", type="SIGNING", player="DaQuan Jones"),
     TransactionEvent(team="DET", type="RELEASE", player="Jack Kiser"),
@@ -341,15 +360,17 @@ async def cmd_testrecap(message: Message) -> None:
     """Админская утилита: пример GAME RECAP (с реальным хайп-текстом от LLM) — уходит в этот же чат."""
     if not is_admin(message.from_user.id if message.from_user else None):
         return
+    box = TEST_BOXSCORE
     try:
-        blurb = await generate_blurb(llm, TEST_RECAP_EVENT)
+        blurb = await generate_boxscore_blurb(llm, box)
     except LLMError as e:
         await message.answer(f"LLM не ответила: {e}")
         blurb = ""
-    text = format_telegram_message(TEST_RECAP_EVENT, md_to_tg_html(blurb) if blurb else "")
+    text = format_boxscore_message(box, md_to_tg_html(blurb) if blurb else "", include_stats=False)
     png = render_scorecard(
-        TEST_RECAP_EVENT.week, TEST_RECAP_EVENT.away, TEST_RECAP_EVENT.home,
-        TEST_RECAP_EVENT.away_score, TEST_RECAP_EVENT.home_score,
+        box.week, box.away, box.home, box.away_score, box.home_score,
+        [(s.name, s.line) for s in box.away_stats],
+        [(s.name, s.line) for s in box.home_stats],
     )
     await message.answer_photo(BufferedInputFile(png, filename="scorecard.png"), caption=text, parse_mode="HTML")
 
@@ -602,26 +623,9 @@ def make_recap_handler(bot: Bot):
             return
 
         if is_final_score_message(raw_text):
-            events = parse_final_score_messages(raw_text)
-            if not events:
-                log.warning("Похоже на Final scores, но не удалось разобрать счёт: %s", raw_text[:300])
-                return
-            for event in events:
-                if not state.is_new(game_key(event)):
-                    continue
-                try:
-                    blurb = await generate_blurb(llm, event)
-                except LLMError as e:
-                    log.error("LLM не сгенерировала recap (%s), отправляю без хайп-текста", e)
-                    blurb = ""
-                text = format_telegram_message(event, md_to_tg_html(blurb) if blurb else "")
-                png = render_scorecard(event.week, event.away, event.home, event.away_score, event.home_score)
-                await bot.send_photo(
-                    settings.recap_chat_id,
-                    BufferedInputFile(png, filename="scorecard.png"),
-                    caption=text, parse_mode="HTML",
-                )
-                state.mark_seen(game_key(event))
+            # В Final scores нет статов игроков — recap шлём только по box score,
+            # который MTFranchiseBot присылает по каждой игре отдельно.
+            log.info("Final scores пропущен: recap уходит только по box score со статами")
             return
 
         async def send_schedule(week: str, games) -> None:

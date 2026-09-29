@@ -1,22 +1,25 @@
-"""Рендер PNG-карточки со счётом матча (в стиле спортивных скорбордов) — Pillow.
+"""Рендер PNG-карточки GAME RECAP в стиле glass (Pillow).
 
-Сами логотипы команд сюда не встраиваю и не подтягиваю ниоткуда (чужие товарные знаки) —
-только фирменные цвета и названия, это публичная информация о брендах NFL, не проприетарная
-графика. Но если положить свой файл в logos/{ABBR}.png (сам, из личных источников) — карточка
-его подхватит и отрисует перед названием команды. Пока файла нет — используется нейтральная
-цветная заглушка (см. logos/generate_placeholders.py), никаких логотипов в ней тоже нет.
+Макет «лицом к лицу»: слева гости, справа хозяева, крупный счёт по центру, ниже
+лучшие игроки друг напротив друга по категориям. Карточка из «матового стекла»
+лежит на размытых огнях в цветах обеих команд — фон рисуется самим кодом.
+
+Логотипы берутся из logos/{ABBR}.png, если файл там есть (кладёт владелец бота
+сам); иначе на месте логотипа ничего не рисуется.
 """
 import io
+import random
 from functools import lru_cache
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
+
+from boxscore import _guess_category
 
 FONTS_DIR = Path(__file__).parent / "fonts"
 FONT_BOLD = FONTS_DIR / "PTSans-Bold.ttf"
 FONT_REGULAR = FONTS_DIR / "PTSans-Regular.ttf"
 LOGOS_DIR = Path(__file__).parent / "logos"
-LOGO_SIZE = 96
 
 # (основной цвет, акцентный цвет) — официальные цвета брендов команд NFL.
 TEAM_COLORS: dict[str, tuple[str, str]] = {
@@ -66,63 +69,133 @@ TEAM_NAMES: dict[str, str] = {
     "SEA": "SEAHAWKS", "SF": "49ERS", "LAR": "RAMS", "AZ": "CARDINALS", "ARI": "CARDINALS",
 }
 
-WIDTH = 1000
-HEADER_H = 70
-ROW_H = 150
-FOOTER_H = 56
-STATS_HEADER_H = 40
-STATS_ROW_H = 62
-PAD = 28
+CATS = [("pass", "ПАС"), ("rush", "ВЫНОС"), ("rec", "ПРИЁМ"), ("def", "ЗАЩИТА")]
+
+W = 1200            # ширина самой карточки
+PAD = 60            # поля фона вокруг карточки
+HDR, BAND, ROW, BOTTOM = 72, 220, 88, 14
+RADIUS = 26
+CENTER = 176        # ширина центральной колонки с категориями
+LOGO = 124
+DARK_ACCENTS = {"#000000", "#101820", "#34302B"}
 
 
-@lru_cache(maxsize=32)
+@lru_cache(maxsize=64)
 def _font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont:
-    path = FONT_BOLD if bold else FONT_REGULAR
-    return ImageFont.truetype(str(path), size)
+    return ImageFont.truetype(str(FONT_BOLD if bold else FONT_REGULAR), size)
 
 
-@lru_cache(maxsize=32)
-def _load_logo(abbr: str) -> Image.Image | None:
+@lru_cache(maxsize=64)
+def _logo(abbr: str) -> Image.Image | None:
     path = LOGOS_DIR / f"{abbr}.png"
     if not path.exists():
         return None
     try:
-        logo = Image.open(path).convert("RGBA")
+        im = Image.open(path).convert("RGBA")
     except Exception:
         return None
-    logo.thumbnail((LOGO_SIZE, LOGO_SIZE))
-    return logo
+    im.thumbnail((LOGO, LOGO))
+    return im
 
 
-def _team_row(img: Image.Image, draw: ImageDraw.ImageDraw, y: int, abbr: str, score: int) -> None:
-    primary, accent = TEAM_COLORS.get(abbr, ("#2b2b2b", "#cccccc"))
+def _tw(draw: ImageDraw.ImageDraw, text: str, font) -> tuple[int, int, int]:
+    b = draw.textbbox((0, 0), text, font=font)
+    return b[2] - b[0], b[3] - b[1], b[1]
+
+
+def _fit(draw: ImageDraw.ImageDraw, text: str, max_w: int, size: int, bold: bool = True):
+    while size > 12 and _tw(draw, text, _font(size, bold))[0] > max_w:
+        size -= 2
+    return _font(size, bold)
+
+
+def _rgb(hex_color: str) -> tuple[int, int, int]:
+    return tuple(int(hex_color[k:k + 2], 16) for k in (1, 3, 5))
+
+
+def _colors(abbr: str) -> tuple[str, str]:
+    return TEAM_COLORS.get(abbr, ("#2B2B2B", "#CCCCCC"))
+
+
+def _layer_rect(img: Image.Image, box, fill, radius: int = 0, outline=None, width: int = 1) -> None:
+    """Полупрозрачный прямоугольник: ImageDraw по RGBA заменяет пиксели, а не смешивает."""
+    layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    ImageDraw.Draw(layer).rounded_rectangle(box, radius=radius, fill=fill, outline=outline, width=width)
+    img.alpha_composite(layer)
+
+
+def _gradient_band(img: Image.Image, box, color: str, a_outer: int, a_inner: int, outer_left: bool) -> None:
+    x0, y0, x1, y1 = box
+    w, h = x1 - x0, y1 - y0
+    grad = Image.linear_gradient("L").rotate(90 if outer_left else -90, expand=True).resize((w, h))
+    grad = grad.point(lambda v: int(a_inner + (a_outer - a_inner) * v / 255))
+    band = Image.new("RGBA", (w, h), _rgb(color) + (0,))
+    band.putalpha(grad)
+    img.alpha_composite(band, (x0, y0))
+
+
+def _bokeh(w: int, h: int, away: str, home: str) -> Image.Image:
+    """Размытые огни: слева в цветах гостей, справа — хозяев. Сид от матча, чтобы
+    одна и та же игра всегда рисовалась одинаково."""
+    rnd = random.Random(f"{away}@{home}")
+    bg = Image.new("RGBA", (w, h), "#0F1115")
+    (ap, aa), (hp, ha) = _colors(away), _colors(home)
+    palettes = ([ap, aa], [hp, ha])
+    for i in range(34):
+        r = rnd.randint(60, 220)
+        left = i % 2 == 0
+        x = rnd.randint(0, w // 2) if left else rnd.randint(w // 2, w)
+        y = rnd.randint(0, h)
+        col = palettes[0 if left else 1][rnd.randint(0, 1)]
+        _layer_rect(bg, [x - r, y - r, x + r, y + r], _rgb(col) + (rnd.randint(70, 150),), radius=r)
+    return bg.filter(ImageFilter.GaussianBlur(40))
+
+
+def _by_cat(stats: list[tuple[str, str]]) -> dict[str, tuple[str, str]]:
+    out: dict[str, tuple[str, str]] = {}
+    for name, line in stats:
+        out.setdefault(_guess_category(line), (name, line))
+    return out
+
+
+def _team_band(img: Image.Image, x0: int, y: int, side: str, abbr: str, score: int, won: bool) -> None:
+    prim, acc = _colors(abbr)
+    bx0, bx1 = (x0, x0 + W // 2) if side == "L" else (x0 + W // 2, x0 + W)
+    _gradient_band(img, (bx0, y, bx1, y + BAND), prim, 215 if won else 140, 95 if won else 45, side == "L")
+    _layer_rect(img, [bx0, y + BAND - 6, bx1, y + BAND], _rgb(acc) + (235 if won else 150,))
+
+    d = ImageDraw.Draw(img)
+    txt = "#FFFFFF" if won else "#B9BEC6"
+    acc_txt = acc if acc not in DARK_ACCENTS else "#D0D3D8"
+    cy = y + BAND // 2
+    sf = _font(124)
+    sw, sh, so = _tw(d, str(score), sf)
+    if side == "L":
+        lx, sx = x0 + 34, x0 + W // 2 - 44 - sw
+        nx = lx + LOGO + 20
+        name_max = sx - nx - 20
+    else:
+        lx, sx = x0 + W - 34 - LOGO, x0 + W // 2 + 44
+        name_max = lx - 20 - (sx + sw + 20)
+
+    lg = _logo(abbr)
+    if lg is not None:
+        if not won:
+            lg = Image.blend(Image.new("RGBA", lg.size, (0, 0, 0, 0)), lg, 0.75)
+        img.alpha_composite(lg, (lx + (LOGO - lg.width) // 2, cy - lg.height // 2))
+        d = ImageDraw.Draw(img)
+
+    d.text((sx, cy - sh // 2 - so), str(score), font=sf, fill=txt)
     name = TEAM_NAMES.get(abbr, abbr)
-
-    draw.rectangle([0, y, WIDTH, y + ROW_H], fill=primary)
-    draw.rectangle([0, y, 14, y + ROW_H], fill=accent)
-
-    text_x = PAD + 20
-    logo = _load_logo(abbr)
-    if logo is not None:
-        logo_y = y + (ROW_H - logo.height) // 2
-        img.paste(logo, (text_x, logo_y), logo)
-        text_x += LOGO_SIZE + 20
-
-    draw.text((text_x, y + 22), abbr, font=_font(30), fill=accent)
-    draw.text((text_x, y + 62), name, font=_font(56), fill="#FFFFFF")
-
-    score_text = str(score)
-    score_font = _font(90)
-    bbox = draw.textbbox((0, 0), score_text, font=score_font)
-    tw = bbox[2] - bbox[0]
-    draw.text((WIDTH - PAD - tw, y + (ROW_H - (bbox[3] - bbox[1])) // 2 - bbox[1]), score_text, font=score_font, fill="#FFFFFF")
-
-
-def _stats_column(draw: ImageDraw.ImageDraw, x: int, y: int, stats: list[tuple[str, str]]) -> None:
-    for i, (name, line) in enumerate(stats):
-        row_y = y + i * STATS_ROW_H
-        draw.text((x, row_y), name, font=_font(23), fill="#FFFFFF")
-        draw.text((x, row_y + 28), line, font=_font(19, bold=False), fill="#9AA0A6")
+    nf = _fit(d, name, name_max, 44)
+    af = _font(24)
+    if side == "L":
+        d.text((nx, cy - 42), abbr, font=af, fill=acc_txt)
+        d.text((nx, cy - 10), name, font=nf, fill=txt)
+    else:
+        rx = lx - 20
+        d.text((rx - _tw(d, abbr, af)[0], cy - 42), abbr, font=af, fill=acc_txt)
+        d.text((rx - _tw(d, name, nf)[0], cy - 10), name, font=nf, fill=txt)
 
 
 def render_scorecard(
@@ -130,46 +203,67 @@ def render_scorecard(
     away_stats: list[tuple[str, str]] | None = None,
     home_stats: list[tuple[str, str]] | None = None,
 ) -> bytes:
-    away_stats = away_stats or []
-    home_stats = home_stats or []
-    n_rows = max(len(away_stats), len(home_stats))
-    stats_h = (STATS_HEADER_H + n_rows * STATS_ROW_H + 10) if n_rows else 0
-    height = HEADER_H + 2 * ROW_H + stats_h + FOOTER_H
+    away_c, home_c = _by_cat(away_stats or []), _by_cat(home_stats or [])
+    rows = [(cat, label) for cat, label in CATS if cat in away_c or cat in home_c]
+    ch = HDR + BAND + ROW * len(rows) + BOTTOM
+    img = _bokeh(W + PAD * 2, ch + PAD * 2, away, home)
+    x0, y0, x1, y1 = PAD, PAD, PAD + W, PAD + ch
 
-    img = Image.new("RGB", (WIDTH, height), "#15181D")
-    draw = ImageDraw.Draw(img)
+    shadow = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).rounded_rectangle([x0 + 4, y0 + 16, x1 + 4, y1 + 16], radius=RADIUS, fill=(0, 0, 0, 150))
+    img.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(22)))
 
-    draw.rectangle([0, 0, WIDTH, HEADER_H], fill="#1E2229")
+    frosted = img.crop((x0, y0, x1, y1)).filter(ImageFilter.GaussianBlur(24))
+    frosted.alpha_composite(Image.new("RGBA", frosted.size, (255, 255, 255, 18)))
+    frosted.alpha_composite(Image.new("RGBA", frosted.size, (10, 12, 16, 120)))
+    mask = Image.new("L", frosted.size, 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, W, ch], radius=RADIUS, fill=255)
+    img.paste(frosted, (x0, y0), mask)
+
+    d = ImageDraw.Draw(img)
     title = f"MEGA · Неделя {week}" if week and week != "?" else "MEGA"
-    draw.text((PAD, 18), title, font=_font(32), fill="#FFFFFF")
+    d.text((x0 + 32, y0 + 20), title, font=_font(30), fill="#FFFFFF")
+    bf = _font(24)
+    bw, bh, bo = _tw(d, "FINAL", bf)
+    bx = x1 - 32 - bw - 36
+    d.rounded_rectangle([bx, y0 + 18, x1 - 32, y0 + 36 + bh], radius=16, fill="#FFB612")
+    d.text((bx + 18, y0 + 27 - bo), "FINAL", font=bf, fill="#101820")
 
-    badge_font = _font(26)
-    badge_text = "FINAL"
-    bbox = draw.textbbox((0, 0), badge_text, font=badge_font)
-    bw, bh = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    badge_pad_x, badge_pad_y = 18, 10
-    bx1 = WIDTH - PAD - bw - 2 * badge_pad_x
-    draw.rounded_rectangle(
-        [bx1, 14, WIDTH - PAD, 14 + bh + 2 * badge_pad_y],
-        radius=8, fill="#FFB612",
-    )
-    draw.text((bx1 + badge_pad_x, 14 + badge_pad_y - bbox[1]), badge_text, font=badge_font, fill="#101820")
+    away_won = away_score > home_score
+    by = y0 + HDR
+    _team_band(img, x0, by, "L", away, away_score, away_won)
+    _team_band(img, x0, by, "R", home, home_score, not away_won)
+    _layer_rect(img, [x0 + W // 2 - 1, by, x0 + W // 2 + 1, by + BAND], (255, 255, 255, 60))
 
-    _team_row(img, draw, HEADER_H, away, away_score)
-    _team_row(img, draw, HEADER_H + ROW_H, home, home_score)
+    sy = by + BAND
+    for i, (cat, label) in enumerate(rows):
+        y = sy + i * ROW
+        if i:
+            _layer_rect(img, [x0 + 30, y, x1 - 30, y + 1], (255, 255, 255, 30))
+        pill = [x0 + W // 2 - CENTER // 2, y + ROW // 2 - 18, x0 + W // 2 + CENTER // 2, y + ROW // 2 + 18]
+        _layer_rect(img, pill, (255, 255, 255, 26), radius=18, outline=(255, 255, 255, 70), width=1)
+        d = ImageDraw.Draw(img)
+        lf = _font(19)
+        lw, lh, lo = _tw(d, label, lf)
+        d.text((x0 + W // 2 - lw // 2, y + ROW // 2 - lh // 2 - lo), label, font=lf, fill="#E6E8EB")
+        for side, stat, won in (("L", away_c.get(cat), away_won), ("R", home_c.get(cat), not away_won)):
+            if not stat:
+                continue
+            name, line = stat
+            max_w = W // 2 - CENTER // 2 - 64
+            nf, lf2 = _fit(d, name, max_w, 25), _fit(d, line, max_w, 20, bold=False)
+            ncol = "#FFFFFF" if won else "#C4C8CE"
+            if side == "L":
+                right = x0 + W // 2 - CENTER // 2 - 30
+                d.text((right - _tw(d, name, nf)[0], y + 14), name, font=nf, fill=ncol)
+                d.text((right - _tw(d, line, lf2)[0], y + 48), line, font=lf2, fill="#A7ADB5")
+            else:
+                left = x0 + W // 2 + CENTER // 2 + 30
+                d.text((left, y + 14), name, font=nf, fill=ncol)
+                d.text((left, y + 48), line, font=lf2, fill="#A7ADB5")
 
-    y = HEADER_H + 2 * ROW_H
-    if n_rows:
-        draw.text((PAD, y + 10), "ЛУЧШИЕ ИГРОКИ", font=_font(18), fill="#8A8F98")
-        y += STATS_HEADER_H
-        col_w = (WIDTH - 2 * PAD) // 2
-        _stats_column(draw, PAD, y, away_stats)
-        _stats_column(draw, PAD + col_w, y, home_stats)
-        y += n_rows * STATS_ROW_H + 10
-
-    draw.rectangle([0, y, WIDTH, height], fill="#1E2229")
-    draw.text((PAD, y + (FOOTER_H - 22) // 2), "MEGA League · Madden 27", font=_font(22), fill="#8A8F98")
+    _layer_rect(img, [x0, y0, x1, y1], (0, 0, 0, 0), radius=RADIUS, outline=(255, 255, 255, 75), width=2)
 
     buf = io.BytesIO()
-    img.save(buf, format="PNG")
+    img.convert("RGB").save(buf, format="PNG")
     return buf.getvalue()
