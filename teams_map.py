@@ -12,8 +12,8 @@ TEAMS = {
     "BAL": {"emoji": "🦉", "telegram": "@Arturetti", "custom_emoji_id": "5208649879450035589", "custom_emoji_fallback": "🐣"},
 
     "NE": {"emoji": "💂", "telegram": "@fnolzoar", "custom_emoji_id": "5208620025132362487", "custom_emoji_fallback": "🏴󠁧󠁢󠁥󠁮󠁧󠁿"},
-    "MIA": {"emoji": "🐬", "telegram": "@l3dn1q", "custom_emoji_id": "5206303933953224077", "custom_emoji_fallback": "🐬"},
-    "BUF": {"emoji": "🐂", "telegram": "@DaniVRN", "custom_emoji_id": "5208665603325310207", "custom_emoji_fallback": "🐂"},
+    "MIA": {"emoji": "🐬", "telegram": "@sclw_3", "custom_emoji_id": "5206303933953224077", "custom_emoji_fallback": "🐬"},
+    "BUF": {"emoji": "🐂", "telegram": "@zamo_17", "custom_emoji_id": "5208665603325310207", "custom_emoji_fallback": "🐂"},
     "NYJ": {"emoji": "✈️", "telegram": "@Ajoudojuau", "custom_emoji_id": "5208678982148436084", "custom_emoji_fallback": "🛩"},
 
     "TEN": {"emoji": "⚔️", "telegram": "@kkkkkk13_13", "custom_emoji_id": "5206388746672415857", "custom_emoji_fallback": "🔥"},
