@@ -31,7 +31,7 @@ TEAMS = {
     "CHI": {"emoji": "🐻", "telegram": "@MikeRyabikin", "custom_emoji_id": "5206672098549836409", "custom_emoji_fallback": "🐻"},
     "GB": {"emoji": "📦", "telegram": "@harley47", "custom_emoji_id": "5208574640212945194", "custom_emoji_fallback": "🟩"},
 
-    "PHI": {"emoji": "🦅", "telegram": "@bernikoww", "custom_emoji_id": "5206328011539884358", "custom_emoji_fallback": "🦅"},
+    "PHI": {"emoji": "🦅", "telegram": "@s_a_gromov", "custom_emoji_id": "5206328011539884358", "custom_emoji_fallback": "🦅"},
     "NYG": {"emoji": "🏙", "telegram": "@defisparta", "custom_emoji_id": "5208648389096384740", "custom_emoji_fallback": "🗽"},
     "WAS": {"emoji": "🫡", "telegram": "@Laruzz", "custom_emoji_id": "5208897394120337040", "custom_emoji_fallback": "😶"},
     "DAL": {"emoji": "🤠", "telegram": "@Chippolllino", "custom_emoji_id": "5208937414625601188", "custom_emoji_fallback": "🤠"},
