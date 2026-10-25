@@ -17,7 +17,7 @@ TEAMS = {
     "NYJ": {"emoji": "✈️", "telegram": "@Ajoudojuau", "custom_emoji_id": "5208678982148436084", "custom_emoji_fallback": "🛩"},
 
     "TEN": {"emoji": "⚔️", "telegram": "@kkkkkk13_13", "custom_emoji_id": "5206388746672415857", "custom_emoji_fallback": "🔥"},
-    "IND": {"emoji": "🧲", "telegram": "@GilTimRus", "custom_emoji_id": "5206314014241466902", "custom_emoji_fallback": "🐴"},
+    "IND": {"emoji": "🧲", "telegram": "@LOst148", "custom_emoji_id": "5206314014241466902", "custom_emoji_fallback": "🐴"},
     "HOU": {"emoji": "🇨🇱", "telegram": "@whateverforeign", "custom_emoji_id": "5206189670643280699", "custom_emoji_fallback": "🏇"},
     "JAX": {"emoji": "😾", "telegram": "@StasVII", "custom_emoji_id": "5208468614650275488", "custom_emoji_fallback": "🐈"},
 
