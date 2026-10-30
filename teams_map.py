@@ -7,7 +7,7 @@ custom_emoji_id — премиум-эмодзи Telegram с логотипом �
 
 TEAMS = {
     "PIT": {"emoji": "👷‍♂️", "telegram": "@kislik34", "custom_emoji_id": "5208532356259916321", "custom_emoji_fallback": "✨"},
-    "CIN": {"emoji": "🐅", "telegram": "@Asttema", "custom_emoji_id": "5206571222652954279", "custom_emoji_fallback": "🐅"},
+    "CIN": {"emoji": "🐅", "telegram": "@IdkByWho", "custom_emoji_id": "5206571222652954279", "custom_emoji_fallback": "🐅"},
     "CLE": {"emoji": "🤎", "telegram": "@lespaul88", "custom_emoji_id": "5208488002132649123", "custom_emoji_fallback": "🤎"},
     "BAL": {"emoji": "🦉", "telegram": "@Arturetti", "custom_emoji_id": "5208649879450035589", "custom_emoji_fallback": "🐣"},
 
