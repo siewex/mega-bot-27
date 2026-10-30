@@ -228,7 +228,7 @@ def format_boxscore_message(box: BoxScore, blurb_html: str, include_stats: bool 
         for team, record in ((box.away, box.away_record), (box.home, box.home_record))
         if record is not None
     ]
-    if records:
+    if records and include_stats:
         lines.append(f"Records: {' · '.join(records)}")
     if blurb_html.strip():
         lines += ["", blurb_html.strip()]

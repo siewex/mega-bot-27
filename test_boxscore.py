@@ -22,8 +22,8 @@ class RecordsTest(unittest.TestCase):
         self.assertEqual((box.away_record, box.home_record), ("4-9-0", "4-9-0"))
         self.assertEqual(box.away_stats[0].name, "Caleb Williams")
         self.assertEqual(box.home_stats[0].name, "Malik Willis")
-        for include_stats in (True, False):
-            self.assertIn("Records: CHI 4-9-0 · MIA 4-9-0", format_boxscore_message(box, "", include_stats))
+        self.assertIn("Records: CHI 4-9-0 · MIA 4-9-0", format_boxscore_message(box, "", True))
+        self.assertNotIn("Records:", format_boxscore_message(box, "", False))
 
     def test_linked_emoji_and_joined_summaries(self):
         text = SAMPLE.replace("<:mt_chi:123>", "[:mt_chi:](https://example.com/chi)")

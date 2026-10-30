@@ -371,6 +371,7 @@ async def cmd_testrecap(message: Message) -> None:
         box.week, box.away, box.home, box.away_score, box.home_score,
         [(s.name, s.line) for s in box.away_stats],
         [(s.name, s.line) for s in box.home_stats],
+        away_record=box.away_record, home_record=box.home_record,
     )
     await message.answer_photo(BufferedInputFile(png, filename="scorecard.png"), caption=text, parse_mode="HTML")
 
@@ -617,6 +618,7 @@ def make_recap_handler(bot: Bot):
                         box.week, box.away, box.home, box.away_score, box.home_score,
                         [(s.name, s.line) for s in box.away_stats],
                         [(s.name, s.line) for s in box.home_stats],
+                        away_record=box.away_record, home_record=box.home_record,
                     )
                     await bot.send_photo(
                         settings.recap_chat_id,

@@ -165,7 +165,7 @@ def _by_cat(stats: list[tuple[str, str]]) -> dict[str, tuple[str, str]]:
     return out
 
 
-def _team_band(img: Image.Image, x0: int, y: int, side: str, abbr: str, score: int, won: bool) -> None:
+def _team_band(img: Image.Image, x0: int, y: int, side: str, abbr: str, score: int, won: bool, record: str | None = None) -> None:
     prim, acc = _colors(abbr)
     bx0, bx1 = (x0, x0 + W // 2) if side == "L" else (x0 + W // 2, x0 + W)
     _gradient_band(img, (bx0, y, bx1, y + BAND), prim, 215 if won else 140, 95 if won else 45, side == "L")
@@ -203,12 +203,18 @@ def _team_band(img: Image.Image, x0: int, y: int, side: str, abbr: str, score: i
         rx = lx - 20
         d.text((rx - _tw(d, abbr, af)[0], cy - 42), abbr, font=af, fill=acc_txt)
         d.text((rx - _tw(d, name, nf)[0], cy - 10), name, font=nf, fill=txt)
+    if record:
+        rf = _fit(d, record, name_max, 26, bold=False)
+        record_x = nx if side == "L" else lx - 20 - _tw(d, record, rf)[0]
+        d.text((record_x, cy + 44), record, font=rf, fill=txt)
 
 
 def render_scorecard(
     week: str, away: str, home: str, away_score: int, home_score: int,
     away_stats: list[tuple[str, str]] | None = None,
     home_stats: list[tuple[str, str]] | None = None,
+    away_record: str | None = None,
+    home_record: str | None = None,
 ) -> bytes:
     away_c, home_c = _by_cat(away_stats or []), _by_cat(home_stats or [])
     rows = [(cat, label) for cat, label in CATS if cat in away_c or cat in home_c]
@@ -240,8 +246,8 @@ def render_scorecard(
     away_won = away_score >= home_score
     home_won = home_score >= away_score
     by = y0 + HDR
-    _team_band(img, x0, by, "L", away, away_score, away_won)
-    _team_band(img, x0, by, "R", home, home_score, home_won)
+    _team_band(img, x0, by, "L", away, away_score, away_won, away_record)
+    _team_band(img, x0, by, "R", home, home_score, home_won, home_record)
     _layer_rect(img, [x0 + W // 2 - 1, by, x0 + W // 2 + 1, by + BAND], (255, 255, 255, 60))
 
     sy = by + BAND
