@@ -167,7 +167,6 @@ def format_remaining_message(week: str, unplayed: list[GameEvent]) -> str:
     lines = [f"<b>⏳ Несыгранные матчи · Неделя {week}</b>", "", f"Осталось матчей: <b>{len(unplayed)}</b>", ""]
     for i, g in enumerate(unplayed, 1):
         lines.append(f"{i}. {tag(g.away)} — {tag(g.home)}")
-    lines += ["", "Договоритесь о времени и укажите его ответом на закреплённое расписание."]
     return "\n".join(lines)
 
 
