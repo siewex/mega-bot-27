@@ -38,6 +38,25 @@ _WEEK_RE = re.compile(r"(pre[\s-]?season\s+)?week\s*(\d+)", re.IGNORECASE)
 def is_not_yet_played_message(raw_text: str) -> bool:
     return "not yet played" in raw_text.lower()
 
+
+def is_remaining_games_message(raw_text: str) -> bool:
+    return bool(re.search(r"\bremaining games\s*·\s*(?:pre[\s-]?season\s+)?week\s*\d+", raw_text, re.IGNORECASE))
+
+
+def parse_remaining_games(raw_text: str) -> tuple[str, list["GameEvent"]]:
+    # Manager names from Discord are not Telegram handles. Use teams_map for tags.
+    clean = raw_text.replace("*", "")
+    lines = [line.split("·", 1)[0].strip() for line in clean.splitlines()]
+    # Preserve the full title: its week number follows the middle dot.
+    week, _ = parse_weekly_board(clean)
+    _, games = parse_weekly_board("\n".join(lines))
+    unique = {}
+    for game in games:
+        if not game.is_completed:
+            game.week = week
+            unique.setdefault((game.away, game.home), game)
+    return week, list(unique.values())
+
 # Отдельное авто-уведомление MTFranchiseBot по каждой сыгранной игре, например:
 #   Final scores
 #   SF 0 @ LAC 31
@@ -145,9 +164,10 @@ def remaining_key(week: str, unplayed: list[GameEvent]) -> str:
 
 
 def format_remaining_message(week: str, unplayed: list[GameEvent]) -> str:
-    lines = [f"<b>Ещё не сыграно · Неделя {week}</b>", ""]
-    for g in unplayed:
-        lines.append(f"{tag(g.away)} — {tag(g.home)}")
+    lines = [f"<b>⏳ Несыгранные матчи · Неделя {week}</b>", "", f"Осталось матчей: <b>{len(unplayed)}</b>", ""]
+    for i, g in enumerate(unplayed, 1):
+        lines.append(f"{i}. {tag(g.away)} — {tag(g.home)}")
+    lines += ["", "Договоритесь о времени и укажите его ответом на закреплённое расписание."]
     return "\n".join(lines)
 
 

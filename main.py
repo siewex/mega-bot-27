@@ -37,6 +37,8 @@ from recap import (
     format_schedule_message,
     is_final_score_message,
     is_not_yet_played_message,
+    is_remaining_games_message,
+    parse_remaining_games,
     parse_weekly_board,
     remaining_key,
     schedule_key,
@@ -674,6 +676,13 @@ def make_recap_handler(bot: Bot):
             except Exception:
                 state.forget(rkey)
                 raise
+
+        if is_remaining_games_message(raw_text):
+            # This is a reminder, even if we have not posted the week's schedule.
+            week, games = parse_remaining_games(raw_text)
+            if week != "?" and games:
+                await send_remaining(week, games)
+            return
 
         if is_not_yet_played_message(raw_text):
             # "Week N: not yet played" — отдельная команда, отфильтрованная только под
