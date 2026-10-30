@@ -36,6 +36,14 @@ _HEADER_RE = re.compile(
 
 _BOXSCORE_URL_RE = re.compile(r"\[Box score\]\((?P<url>[^)]+)\)", re.IGNORECASE)
 
+# Team summaries precede the player stats: CHI Bears 3 · manager · 4-9-0.
+# Match each summary independently, even if Discord joins them onto one line.
+_TEAM_RECORD_RE = re.compile(
+    rf"\b(?P<team>{_ABBR})\s+[^·\n]+?\s+\d{{1,3}}\s*·\s*[^·\n]+\s*·\s*"
+    r"(?P<record>\d{1,2}-\d{1,2}-\d{1,2})(?![\d-])",
+    re.IGNORECASE,
+)
+
 CATEGORY_LABELS = {"pass": "🎯 Пас", "rush": "🏃 Ран", "rec": "🙌 Приём", "def": "🛡 Защита"}
 
 
@@ -56,6 +64,8 @@ class BoxScore:
     away_stats: list[PlayerStat] = field(default_factory=list)
     home_stats: list[PlayerStat] = field(default_factory=list)
     box_score_url: str | None = None
+    away_record: str | None = None
+    home_record: str | None = None
 
 
 def is_boxscore_message(raw_text: str) -> bool:
@@ -119,6 +129,15 @@ def _parse_one_boxscore(header: re.Match, segment: str) -> BoxScore:
     )
 
     idx = segment.lower().find("box score")
+    # Markdown and custom emoji can wrap a team name or split its words.
+    # Only inspect the summary, so player stat lines cannot become records.
+    summary = segment[:idx] if idx != -1 else segment
+    summary = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", summary)
+    summary = re.sub(r"<a?:\w+:\d+>|:\w+:", "", summary)
+    summary = summary.replace("*", "").replace("__", "")
+    records = {m.group("team").upper(): m.group("record") for m in _TEAM_RECORD_RE.finditer(summary)}
+    box.away_record = records.get(away)
+    box.home_record = records.get(home)
     if idx == -1:
         return box
     tail = segment[idx + len("box score"):]
@@ -204,6 +223,13 @@ def format_boxscore_message(box: BoxScore, blurb_html: str, include_stats: bool 
         f"{tag(box.away)} — {box.away_score}:{box.home_score} — {tag(box.home)}",
         f"Победа: {tag(winner)} ({win_score}-{lose_score})",
     ]
+    records = [
+        f"{team} {record}"
+        for team, record in ((box.away, box.away_record), (box.home, box.home_record))
+        if record is not None
+    ]
+    if records:
+        lines.append(f"Records: {' · '.join(records)}")
     if blurb_html.strip():
         lines += ["", blurb_html.strip()]
     if include_stats and (box.away_stats or box.home_stats):
