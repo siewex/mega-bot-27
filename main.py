@@ -408,6 +408,27 @@ async def cmd_replay(message: Message) -> None:
     await message.reply("Обработано (новые игры/расписание уйдут в основной чат, уже показанные — пропустятся).")
 
 
+@router.message(Command("replayforce"))
+async def cmd_replayforce(message: Message) -> None:
+    """Explicit admin request to regenerate already posted game recaps."""
+    if not is_admin(message.from_user.id if message.from_user else None):
+        return
+    if recap_handler is None:
+        await message.reply("Discord-relay выключен, обрабатывать нечем.")
+        return
+    parts = message_text(message).split(maxsplit=1)
+    raw = parts[1] if len(parts) > 1 else message_text(message.reply_to_message) if message.reply_to_message else ""
+    if not is_boxscore_message(raw) or not parse_boxscore_messages(raw):
+        await message.reply(
+            "Пришли /replayforce и исходный box score из Discord одним сообщением. "
+            "Или ответь командой /replayforce на сообщение с исходным box score. "
+            "Нужны счёт, стадия и статистика игроков; готовой картинки из Telegram недостаточно."
+        )
+        return
+    count = await recap_handler(raw, force=True)
+    await message.reply(f"Заново отправлено рекапов: {count or 0}. Смотри основной чат.")
+
+
 @router.message(Command("reload"))
 async def cmd_reload(message: Message) -> None:
     global KNOWLEDGE
@@ -571,7 +592,7 @@ async def periodic_cleanup() -> None:
 def make_recap_handler(bot: Bot):
     state = recap_state  # общий инстанс — нужен и обработчику реплаев на расписание
 
-    async def handle_recap(raw_text: str) -> None:
+    async def handle_recap(raw_text: str, *, force: bool = False) -> int | None:
         if is_transactions_message(raw_text):
             if not settings.transactions_chat_id:
                 return
@@ -599,6 +620,7 @@ def make_recap_handler(bot: Bot):
             if not boxes:
                 log.warning("Похоже на box score, но не удалось разобрать счёт: %s", raw_text[:300])
                 return
+            sent_count = 0
             for box in boxes:
                 if not box.away_stats and not box.home_stats:
                     log.warning(
@@ -607,7 +629,8 @@ def make_recap_handler(bot: Bot):
                         box.away, box.away_score, box.home_score, box.home,
                     )
                 key = boxscore_key(box)
-                if not state.claim(key):
+                claimed = state.claim(key)
+                if not claimed and not force:
                     continue
                 try:
                     try:
@@ -627,10 +650,13 @@ def make_recap_handler(bot: Bot):
                         BufferedInputFile(png, filename="scorecard.png"),
                         caption=text, parse_mode="HTML",
                     )
+                    sent_count += 1
                 except Exception:
-                    state.forget(key)
+                    # A failed forced resend must not erase an earlier successful post.
+                    if claimed:
+                        state.forget(key)
                     raise
-            return
+            return sent_count
 
         if is_final_score_message(raw_text):
             # В Final scores нет статов игроков — recap шлём только по box score,
