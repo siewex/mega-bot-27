@@ -14,7 +14,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-from boxscore import _guess_category
+from boxscore import _guess_category, period_label
 
 FONTS_DIR = Path(__file__).parent / "fonts"
 FONT_BOLD = FONTS_DIR / "PTSans-Bold.ttf"
@@ -234,7 +234,7 @@ def render_scorecard(
     img.paste(frosted, (x0, y0), mask)
 
     d = ImageDraw.Draw(img)
-    title = f"MEGA · Неделя {week}" if week and week != "?" else "MEGA"
+    title = f"MEGA · {period_label(week)}" if week and week != "?" else "MEGA"
     d.text((x0 + 32, y0 + 20), title, font=_font(30), fill="#FFFFFF")
     bf = _font(24)
     bw, bh, bo = _tw(d, "FINAL", bf)

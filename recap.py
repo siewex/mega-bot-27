@@ -108,7 +108,9 @@ def parse_weekly_board(raw_text: str) -> tuple[str, list[GameEvent]]:
 
 
 def is_final_score_message(raw_text: str) -> bool:
-    return "final score" in raw_text.strip().lower()
+    # Match the notification title, not explanatory text in a week-advance notice.
+    title = next((line.strip().replace("*", "") for line in raw_text.splitlines() if line.strip()), "")
+    return bool(re.match(r"^final scores?\b", title, re.IGNORECASE))
 
 
 def parse_final_score_messages(raw_text: str) -> list[GameEvent]:

@@ -30,7 +30,9 @@ _ABBR = "|".join(sorted((re.escape(a) for a in TEAMS), key=len, reverse=True))
 
 _HEADER_RE = re.compile(
     rf"(?P<away>{_ABBR})\s+(?P<away_score>\d{{1,3}})\s*@\s*(?P<home>{_ABBR})\s+(?P<home_score>\d{{1,3}})"
-    rf"\s*·\s*Week\s*(?P<week>\d+)",
+    rf"\s*·\s*(?:Week\s*(?P<week>\d+)\b|"
+    r"(?P<round>Wild[ -]?Card(?:\s+Round)?|Divisional(?:\s+Round)?|"
+    r"Conference(?:\s+Championships?)?|Super[ -]?Bowl)(?![a-z]))",
     re.IGNORECASE,
 )
 
@@ -45,6 +47,24 @@ _TEAM_RECORD_RE = re.compile(
 )
 
 CATEGORY_LABELS = {"pass": "🎯 Пас", "rush": "🏃 Ран", "rec": "🙌 Приём", "def": "🛡 Защита"}
+
+
+def period_label(week: str) -> str:
+    """Named playoff rounds already carry a display label, not a week number."""
+    return f"Неделя {week}" if str(week).isdigit() else week
+
+
+def _header_period(header: re.Match) -> str:
+    if header.group("week"):
+        return header.group("week")
+    round_name = re.sub(r"[\s-]+", "", header.group("round").lower())
+    if round_name.startswith("wildcard"):
+        return "Уайлд-кард"
+    if round_name.startswith("divisional"):
+        return "Дивизионный раунд"
+    if round_name.startswith("conference"):
+        return "Финалы конференций"
+    return "Супербоул"
 
 
 @dataclass
@@ -110,7 +130,22 @@ _PLAYER_STAT_RE = re.compile(
 def _extract_player_stats(block: str) -> list[PlayerStat]:
     # MTFranchiseBot иногда оборачивает имена в markdown **bold** — звёздочки разрывают
     # связку "имя -> пробел -> цифра статы" в регэкспе, поэтому просто убираем их.
-    joined = " ".join(ln.strip() for ln in block.splitlines() if ln.strip()).replace("*", "")
+    lines = []
+    for raw_line in block.splitlines():
+        line = raw_line.strip().replace("*", "")
+        if line.lower().startswith(("madden.tools", "data as of")):
+            break
+        if line:
+            lines.append(line)
+    # The real Discord payload has name/stat pairs. Preserve full names such as
+    # A.J. Brown; the flattened fallback can mistake initials for stat acronyms.
+    if len(lines) % 2 == 0 and all(
+        re.match(r"^[^\d]", lines[i]) and re.match(r"^\d", lines[i + 1])
+        for i in range(0, len(lines), 2)
+    ):
+        return [PlayerStat(_guess_category(lines[i + 1]), lines[i], lines[i + 1])
+                for i in range(0, len(lines), 2)]
+    joined = " ".join(lines)
     return [
         PlayerStat(category=_guess_category(m.group("stat")), name=m.group("name").strip(), line=m.group("stat").strip())
         for m in _PLAYER_STAT_RE.finditer(joined)
@@ -123,7 +158,7 @@ def _parse_one_boxscore(header: re.Match, segment: str) -> BoxScore:
     away, home = header.group("away").upper(), header.group("home").upper()
     url_m = _BOXSCORE_URL_RE.search(segment)
     box = BoxScore(
-        week=header.group("week"), away=away, home=home,
+        week=_header_period(header), away=away, home=home,
         away_score=int(header.group("away_score")), home_score=int(header.group("home_score")),
         box_score_url=url_m.group("url") if url_m else None,
     )
@@ -224,7 +259,7 @@ def _stats_text(stats: list[PlayerStat]) -> str:
 
 async def generate_boxscore_blurb(llm, box: BoxScore) -> str:
     user_content = (
-        f"Неделя {box.week}: {box.away} {box.away_score} — {box.home_score} {box.home}.\n\n"
+        f"{period_label(box.week)}: {box.away} {box.away_score} — {box.home_score} {box.home}.\n\n"
         f"{box.away}:\n{_stats_text(box.away_stats)}\n\n"
         f"{box.home}:\n{_stats_text(box.home_stats)}"
     )
@@ -245,7 +280,7 @@ def format_boxscore_message(box: BoxScore, blurb_html: str, include_stats: bool 
     winner = box.away if box.away_score > box.home_score else box.home
     win_score, lose_score = sorted((box.away_score, box.home_score), reverse=True)
     lines = [
-        f"<b>GAME RECAP · Неделя {box.week}</b>",
+        f"<b>GAME RECAP · {period_label(box.week)}</b>",
         "",
         f"{tag(box.away)} — {box.away_score}:{box.home_score} — {tag(box.home)}",
         f"Победа: {tag(winner)} ({win_score}-{lose_score})",

@@ -701,7 +701,7 @@ def make_recap_handler(bot: Bot):
         # Сводка `scores` используется для расписания — recap по сыгранным играм
         # строится на отдельных уведомлениях Final scores выше.
         week, games = parse_weekly_board(raw_text)
-        if week == "?":
+        if week == "?" or not games:
             return
 
         if not any(g.is_completed for g in games):
